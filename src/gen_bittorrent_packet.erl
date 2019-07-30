@@ -343,6 +343,16 @@ parse_test_() ->
         Handshake1/binary,
         00, 00, 00, 16#55, 05, PartBitfieldPayload1/binary
     >>,
+    Rest1 = <<
+        0, 0, 0, 85, 5, 212, 243, 255, 255, 255, 255, 255, 255, 255,
+        255, 255, 255, 255, 255, 255, 255, 255, 255
+    >>,
+    Rest2 = <<
+        Rest1/binary, 255, 255, 255, 255, 255, 255,
+        255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+        255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+        255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
+    >>,
     [
         %
         % Bitfield parser
@@ -388,60 +398,63 @@ parse_test_() ->
         ),
         ?_assertEqual(
             {ok, [{bitfield, BitFieldRecord}], undefined}, identify(BitField)
-        )
+        ),
         %
         % Happy day packet (many messages) scenario
-%%        ?_assertEqual(
-%%            {ok, [
-%%                    {handshake, true},
-%%                    {bitfield, BitFieldRecord},
-%%                    {unchoke, true},
-%%                    {piece, PieceRecord},
-%%                    {have, 3},
-%%                    {piece, PieceRecord},
-%%                    {have, 3}
-%%                 ]
-%%            },
-%%            parse(Data1, undefined)
-%%        ),
-%%        ?_assertEqual(
-%%            {ok, [
-%%                    {piece, PieceRecord},
-%%                    {have, 3}
-%%                 ]
-%%            },
-%%            parse(Data2, undefined)
-%%        )
+        ?_assertEqual(
+            {ok,
+                [
+                    {handshake, true},
+                    {bitfield, BitFieldRecord},
+                    {unchoke, true},
+                    {piece, PieceRecord},
+                    {have, 3},
+                    {piece, PieceRecord},
+                    {have, 3}
+                ],
+                undefined
+            },
+            parse(Data1, undefined)
+        ),
+        ?_assertEqual(
+            {ok,
+                [
+                    {piece, PieceRecord},
+                    {have, 3}
+                ],
+                undefined
+            },
+            parse(Data2, undefined)
+        ),
         %
         % Rainy day scenario:
         % * full handshake message
         % * bitfield message splitted in 3 packets (possible to identify message from first packet)
         % * piece message splitted in 3 packets (possible to identify message only from third packet)
-%% @todo fix
-%%        ?_assertEqual(
-%%            {ok, [{handshake, true}]},
-%%            parse(Pid, RainyData1)
-%%        ),
-%%        ?_assertEqual(
-%%            {ok, []},
-%%            parse(Pid, PartBitfieldPayload2)
-%%        ),
-%%        ?_assertEqual(
-%%            {ok, [{bitfield, BitFieldRecord}]},
-%%            parse(Pid, PartBitfieldPayload3)
-%%        ),
-%%        ?_assertEqual(
-%%            {ok, []},
-%%            parse(Pid, PartPiecePayload1)
-%%        ),
-%%        ?_assertEqual(
-%%            {ok, []},
-%%            parse(Pid, PartPiecePayload2)
-%%        ),
-%%        ?_assertEqual(
-%%            {ok, [{piece, PieceRecord}]},
-%%            parse(Pid, PartPiecePayload3)
-%%        )
+        ?_assertEqual(
+            {ok, [{handshake, true}], Rest1},
+            parse(RainyData1, undefined)
+        ),
+        ?_assertEqual(
+            {ok, [], Rest2},
+            parse(PartBitfieldPayload2, Rest1)
+        ),
+        ?_assertEqual(
+            {ok, [{bitfield, BitFieldRecord}], undefined},
+            parse(PartBitfieldPayload3, Rest2)
+        ),
+        ?_assertEqual(
+            {ok, [], <<0>>},
+            parse(PartPiecePayload1, undefined)
+        ),
+        ?_assertEqual(
+            {ok, [], <<0, 0, 0, 92>>},
+            parse(PartPiecePayload2, <<0>>)
+        ),
+        ?_assertEqual(
+            {ok, [{piece, PieceRecord}], undefined},
+            parse(PartPiecePayload3, <<0, 0, 0, 92>>)
+        )
     ].
 
 
