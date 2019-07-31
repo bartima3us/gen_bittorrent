@@ -9,6 +9,8 @@
 -module(gen_bittorrent_impl).
 -author("bartimaeus").
 
+-behaviour(gen_bittorrent).
+
 %% API
 -export([
     start_link/0

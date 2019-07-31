@@ -12,8 +12,13 @@
 %% API
 -export([
     handshake/3,
-    interested/1,
     keep_alive/1,
+    choke/1,
+    unchoke/1,
+    interested/1,
+    not_interested/1,
+    have/2,
+    bitfield/2,
     request_piece/2,
     request_piece/4,
     pipeline_request_piece/4,
@@ -23,7 +28,7 @@
 
 %% @doc
 %% Send `handshake` message
-%%
+%% @todo change to binary?
 handshake(Socket, PeerId, Hash) ->
     Request = [
         19,
@@ -36,6 +41,27 @@ handshake(Socket, PeerId, Hash) ->
 
 
 %% @doc
+%% Send `keep alive` message
+%%
+keep_alive(Socket) ->
+    gen_tcp:send(Socket, <<00, 00, 00, 00>>).
+
+
+%% @doc
+%% Send `choke` message
+%%
+choke(Socket) ->
+    gen_tcp:send(Socket, <<00, 00, 00, 01, 00>>).
+
+
+%% @doc
+%% Send `unchoke` message
+%%
+unchoke(Socket) ->
+    gen_tcp:send(Socket, <<00, 00, 00, 01, 01>>).
+
+
+%% @doc
 %% Send `interested` message
 %%
 interested(Socket) ->
@@ -43,10 +69,26 @@ interested(Socket) ->
 
 
 %% @doc
-%% Send `keep alive` message
+%% Send `not_interested` message
 %%
-keep_alive(Socket) ->
-    gen_tcp:send(Socket, <<00, 00, 00, 00>>).
+not_interested(Socket) ->
+    gen_tcp:send(Socket, <<00, 00, 00, 01, 03>>).
+
+
+%% @doc
+%% Send `have` message
+%%
+have(Socket, PieceId) ->
+    gen_tcp:send(Socket, <<00, 00, 00, 05, 04, PieceId/binary>>).
+
+
+%% @doc
+%% Send `bitfield` message
+%%
+bitfield(Socket, Bitfield) ->
+    SizeInt = byte_size(Bitfield) + 1,
+    SizeBin = <<SizeInt:32>>,
+    gen_tcp:send(Socket, <<SizeBin/binary, 05, Bitfield/binary>>).
 
 
 %% @doc

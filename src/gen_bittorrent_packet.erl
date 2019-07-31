@@ -113,8 +113,20 @@ identify(FullData = <<Length:4/bytes, 5, Data/bytes>>, Acc) ->
 
 %
 % Request (length = 13)
-identify(<<0, 0, 0, 13, 6, _PieceIndex:4/bytes, _BlockOffset:4/bytes, _BlockLength:4/bytes, Rest/bytes>>, Acc) ->
-    identify(Rest, Acc);
+identify(FullData = <<0, 0, 0, 13, 6, Data/bytes>>, Acc) ->
+    PayloadLength = 12, % Because we've already matched Idx=6
+    case Data of
+        Data when byte_size(Data) < PayloadLength ->
+            {ok, lists:reverse(Acc), FullData};
+        Data ->
+            <<PieceIndex:4/bytes, BlockOffset:4/bytes, BlockLength:4/bytes, Rest/bytes>> = Data,
+            Request = #request_data{
+                piece_index  = gen_bittorrent_helper:bin_piece_id_to_int(PieceIndex),
+                block_offset = BlockOffset,
+                length       = BlockLength
+            },
+            identify(Rest, [{request, Request} | Acc])
+    end;
 
 %
 % Piece (length = 16384 bytes (piece size) + 9 (piece: <len=0009+X><id=7><index><begin><block>))
@@ -139,7 +151,12 @@ identify(Data, Acc) ->
     {ok, lists:reverse(Acc), Data}.
 
 
-%% @doc
+
+%%%===================================================================
+%%% Private functions.
+%%%===================================================================
+
+%% @private
 %% Parse bitfield to bits ({PieceId, true | false}). True or false depends if peer has a piece or not.
 %%
 parse_bitfield(Bitfield) when is_list(Bitfield) ->

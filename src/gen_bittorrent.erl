@@ -47,6 +47,7 @@
     peer_state      = choked            :: unchoked | choked
 }).
 
+% @todo specify types
 -record(data, {
     % BitTorrent specific fields
     socket                  :: port(),
