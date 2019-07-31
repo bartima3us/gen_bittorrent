@@ -13,7 +13,7 @@
 
 %% API
 -export([
-    start_link/4
+    start_link/6
 ]).
 
 -export([
@@ -31,56 +31,125 @@
 ]).
 
 -record(state, {
-    event_handler   :: pid()
+    piece_size      :: pos_integer(),
+    event_handler   :: pid(),
+    io_device       % @todo specify type
 }).
 
-%%
-%%
-%%
-start_link(Ip, Port, LeecherId, PieceId) ->
-    gen_bittorrent:start_link(?MODULE, Ip, Port, LeecherId, <<20,6,22,150,209,14,72,58,240,183,227,28,144,88,78,197,85,137,236,91>>, PieceId, 1048576, [], []).
 
 %%
 %%
 %%
-init(_Args) ->
+start_link(File, Ip, Port, LeecherId, PieceId, PieceSize) ->
+    gen_bittorrent:start_link(?MODULE, Ip, Port, LeecherId, <<20,6,22,150,209,14,72,58,240,183,227,28,144,88,78,197,85,137,236,91>>, PieceId, PieceSize, [File, PieceSize], []).
+
+
+%%
+%%
+%%
+init([File, PieceSize]) ->
     {ok, EventMgrPid} = gen_event:start_link(),
     gen_event:add_handler(EventMgrPid, gen_bittorrent_event_handler, []),
-    {ok, #state{event_handler = EventMgrPid}}.
+    {ok, IoDevice} = file:open(File, [write, read, binary]),
+    NewState = #state{
+        piece_size    = PieceSize,
+        event_handler = EventMgrPid,
+        io_device     = IoDevice
+    },
+    {ok, NewState}.
 
+
+%%
+%%
+%%
 peer_handshaked(PieceId, State = #state{event_handler = EventMgrPid}) ->
     ok = gen_event:notify(EventMgrPid, {handshaked, PieceId}),
     {ok, State}.
 
+
+%%
+%%
+%%
 peer_unchoked(PieceId, State = #state{event_handler = EventMgrPid}) ->
     ok = gen_event:notify(EventMgrPid, {unchoked, PieceId}),
     {ok, State}.
 
+
+%%
+%%
+%%
 peer_choked(_PieceId, State) ->
     {ok, State}.
 
+
+%%
+%%
+%%
 block_requested(PieceId, _Offset, _Length, State = #state{event_handler = EventMgrPid}) ->
     ok = gen_event:notify(EventMgrPid, {block_requested, PieceId}),
     {ok, State}.
 
-block_downloaded(_PieceId, _Payload, Offset, Length, State) ->
-    ct:print("Block downloaded! Offset / length = ~p / ~p~n", [Offset, Length]),
+
+%%
+%%
+%%
+block_downloaded(PieceId, Payload, Offset, _Length, State) ->
+    #state{
+        event_handler = EventMgrPid,
+        io_device     = IoDevice,
+        piece_size    = PieceSize
+    } = State,
+    OffsetInt = gen_bittorrent_helper:bin_piece_id_to_int(Offset),
+    ok = write_payload(IoDevice, PieceId, OffsetInt, PieceSize, Payload),
+    ok = gen_event:notify(EventMgrPid, {block_downloaded, PieceId}),
     {ok, State}.
 
-piece_completed(_PieceId, State) ->
-    ct:print("Piece completed!~n"),
+
+%%
+%%
+%%
+piece_completed(PieceId, State = #state{event_handler = EventMgrPid}) ->
+    ok = gen_event:notify(EventMgrPid, {completed, PieceId}),
     {ok, State}.
 
-handle_call(Msg, _From, State) ->
-    ct:print("Handle call. Msg = ~p~n", [Msg]),
+
+%%
+%%
+%%
+handle_call(_Msg, _From, State) ->
     {reply, ok, State}.
 
-handle_info(Msg, State) ->
-    ct:print("Handle info. Msg = ~p~n", [Msg]),
+
+%%
+%%
+%%
+handle_info(_Msg, State) ->
     {ok, State}.
 
+
+%%
+%%
+%%
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+
+%%
+%%
+%%
 terminate(_State) ->
     ok.
+
+
+
+%%%===================================================================
+%%% Internal functions.
+%%%===================================================================
+
+%%
+%%
+%%
+write_payload(IoDevice, PieceId, BlockBegin, PieceSize, Payload) ->
+    SizeFrom = PieceSize * PieceId + BlockBegin,
+    file:pwrite(IoDevice, [{{bof, SizeFrom}, Payload}]).
+

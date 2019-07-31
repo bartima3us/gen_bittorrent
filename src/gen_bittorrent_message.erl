@@ -22,6 +22,7 @@
     request_piece/2,
     request_piece/4,
     pipeline_request_piece/4,
+    piece/4,
     cancel/4
 ]).
 
@@ -127,6 +128,24 @@ pipeline_request_piece(MsgAcc, PieceIdBin, OffsetBin, PieceLengthBin) ->
         OffsetBin/binary,       % Begin offset of piece
         PieceLengthBin/binary   % Piece length
     >>.
+
+
+%% @doc
+%% Send `piece` message
+%%
+piece(Socket, PieceId, Begin, Block) ->
+    SizeInt = byte_size(Block) + 9,
+    SizeBin = <<SizeInt:32>>,
+    gen_tcp:send(
+        Socket,
+        <<
+            SizeBin/binary, % Message length
+            07,             % Message type
+            PieceId/binary, % Piece index
+            Begin/binary,   % Begin offset of piece
+            Block/binary    % Piece length
+        >>
+    ).
 
 
 %% @doc

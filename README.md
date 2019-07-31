@@ -4,6 +4,7 @@ gen_bittorrent
 - [Introduction](#introduction)
 - [Status](#status)
 - [Usage](#usage)
+- [Tests](#tests)
 
 ## <a name="introduction">Introduction</a> ##
 
@@ -35,3 +36,9 @@ gen_bittorrent:switch_piece(Name :: term(), PieceId :: non_neg_integer(), PieceS
 
 More complex example can be found: https://github.com/bartima3us/erl-bittorrent
 
+## <a name="tests">Tests</a> ##
+
+EUnit and CT tests
+```
+$ make tests
+```

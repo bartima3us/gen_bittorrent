@@ -28,7 +28,9 @@
     start_link/10,
     call/2,
     call/3,
-    switch_piece/3
+    switch_piece/3,
+    stop/1,
+    stop/3
 ]).
 
 -export([
@@ -247,6 +249,16 @@ call(Name, Request, Timeout) ->
 switch_piece(Name, PieceId, PieceSize) ->
     Name ! {'$switch_piece', PieceId, PieceSize},
     ok.
+
+
+%%  @doc
+%%  Stop BitTorrent process.
+%%
+stop(Name) ->
+    gen:stop(Name).
+
+stop(Name, Reason, Timeout) ->
+    gen:stop(Name, Reason, Timeout).
 
 
 

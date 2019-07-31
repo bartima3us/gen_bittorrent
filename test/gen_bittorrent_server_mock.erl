@@ -11,8 +11,10 @@
 
 -behaviour(gen_server).
 
+-include("gen_bittorrent.hrl").
+
 %% API
--export([start_link/3]).
+-export([start_link/5]).
 
 %% gen_server callbacks
 -export([
@@ -32,7 +34,9 @@
     torrent_hash            :: string(), % @todo change to binary?
     handshake       = false :: boolean(),
     unchoke         = false :: boolean(),
-    event_mgr_pid           :: pid()
+    event_mgr_pid           :: pid(),
+    io_device,              % @todo import io_device() type
+    piece_size              :: pos_integer()
 }).
 
 %%%===================================================================
@@ -44,8 +48,9 @@
 %% Starts the server
 %% @end
 %%--------------------------------------------------------------------
-start_link(Port, PeerId, TorrentHash) ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [Port, PeerId, TorrentHash], []).
+start_link(Port, PeerId, TorrentHash, File, PieceSize) ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [Port, PeerId, TorrentHash, File, PieceSize], []).
+
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -56,15 +61,18 @@ start_link(Port, PeerId, TorrentHash) ->
 %% @doc
 %% Initializes the server
 %%
-init([Port, PeerId, TorrentHash]) ->
+init([Port, PeerId, TorrentHash, File, PieceSize]) ->
     self() ! start,
     {ok, EventMgrPid} = gen_event:start_link(),
     gen_event:add_handler(EventMgrPid, gen_bittorrent_event_handler, []),
+    {ok, IoDevice} = file:open(File, [read, binary]),
     NewState = #state{
         port          = Port,
         peer_id       = PeerId,
         torrent_hash  = TorrentHash,
-        event_mgr_pid = EventMgrPid
+        event_mgr_pid = EventMgrPid,
+        io_device     = IoDevice,
+        piece_size    = PieceSize
     },
     {ok, NewState}.
 
@@ -142,12 +150,36 @@ handle_info({tcp, Socket, Payload}, State = #state{handshake = true, unchoke = f
 %%
 handle_info({tcp, Socket, Payload}, State = #state{handshake = true, unchoke = true}) ->
     #state{
-        rest = Rest
+        rest       = Rest,
+        io_device  = IoDevice,
+        piece_size = PieceSize
     } = State,
-    {ok, _ParsedPayload, NewRest} = gen_bittorrent_packet:parse(Payload, Rest),
-    % @todo implement payload sending
+    {ok, ParsedPayload, NewRest} = gen_bittorrent_packet:parse(Payload, Rest),
+    ok = lists:foreach(
+        fun ({request, RequestData}) ->
+            #request_data{
+                piece_index  = PieceId,
+                block_offset = OffsetBin,
+                length       = Length
+            } = RequestData,
+            PieceIdBin = gen_bittorrent_helper:int_piece_id_to_bin(PieceId),
+            OffsetInt = gen_bittorrent_helper:bin_piece_id_to_int(OffsetBin),
+            LengthInt = gen_bittorrent_helper:bin_piece_id_to_int(Length),
+            Offset = PieceSize * PieceId + OffsetInt,
+            {ok, Block} = file:pread(IoDevice, {bof, Offset}, LengthInt),
+            ok = gen_bittorrent_message:piece(Socket, PieceIdBin, OffsetBin, Block)
+        end,
+        ParsedPayload
+    ),
     ok = gen_bittorrent_helper:get_packet(Socket),
     {noreply, State#state{rest = NewRest}};
+
+%%
+%%
+handle_info({tcp_closed, _Socket}, State = #state{io_device = IoDevice}) ->
+    ct:print("Server socket closed."),
+    ok = file:close(IoDevice),
+    {noreply, State};
 
 %%
 %%
@@ -161,8 +193,16 @@ handle_info(Info, State) ->
 %% Termination callback.
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, #state{socket = Socket}) ->
-    ok = gen_tcp:close(Socket).
+terminate(_Reason, State) ->
+    #state{
+        socket    = Socket,
+        io_device = IoDevice
+    } = State,
+    ok = file:close(IoDevice),
+    ok = case Socket of
+        Socket when is_port(Socket) -> gen_tcp:close(Socket);
+        _Else -> ok
+    end.
 
 %%--------------------------------------------------------------------
 %% @private
