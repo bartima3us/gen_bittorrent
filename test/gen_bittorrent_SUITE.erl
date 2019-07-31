@@ -15,9 +15,10 @@
 -define(IP, {127,0,0,1}).
 -define(PORT, 8092).
 -define(FILENAME, "file_to_download.example").
+-define(STD_PIECE_SIZE, 65536).
 -define(PIECE1_SIZE, 65536).
 -define(PIECE2_SIZE, 36864).
--define(TORRENT_HASH, "torr3t_ha5h000000000").
+-define(TORRENT_HASH, "torr3nt_ha5h00000000").
 -define(LEECHER_ID, "l33ch3r_1d0000000000").
 -define(PEER_ID, "p33r_1d0000000000000").
 -define(PIECE_ID1, 0).
@@ -77,7 +78,7 @@ test_basic(Config) ->
     FileSrc = filename:join([DataDir, ?FILENAME]),
     FileDst = filename:join([PrivDir, ?FILENAME]),
     ok = meck:new(gen_bittorrent_event_handler, [passthrough]),
-    {ok, ServerPid} = gen_bittorrent_server_mock:start_link(?PORT, ?PEER_ID, ?TORRENT_HASH, FileSrc, ?PIECE1_SIZE),
+    {ok, ServerPid} = gen_bittorrent_server_mock:start_link(?PORT, ?PEER_ID, ?TORRENT_HASH, FileSrc, ?STD_PIECE_SIZE),
     ok = meck:wait(gen_bittorrent_event_handler, handle_event, [server_started, '_'], ?MECK_TIMEOUT),
     {ok, LeecherPid} = gen_bittorrent_impl:start_link(FileDst, ?IP, ?PORT, ?LEECHER_ID, ?PIECE_ID1, ?PIECE1_SIZE),
     % Check for a handshake
