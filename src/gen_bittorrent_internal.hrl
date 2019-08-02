@@ -12,31 +12,30 @@
 -define(DEFAULT_PROTOCOL, tcp).
 -define(DEFAULT_CONNECT_TIMEOUT, 10000).
 
-% @todo specify types
 -record(data, {
     % BitTorrent specific fields
-    socket                  :: port(),
-    torrent_hash,
-    peer_ip,
-    peer_port,
-    piece_id,
-    piece_size,
-    blocks,
-    blocks_not_requested,
-    connect_timeout         = ?DEFAULT_CONNECT_TIMEOUT,
-    rest_payload,
-    protocol                = ?DEFAULT_PROTOCOL,
-    peer_id,
-    request_length          = ?DEFAULT_REQUEST_LENGTH, % 16 kb
+    socket                                              :: port(),
+    torrent_hash                                        :: binary(),
+    peer_ip                                             :: inet:ip_address(),
+    peer_port                                           :: inet:port_number(),
+    piece_id                                            :: non_neg_integer(),
+    piece_size                                          :: pos_integer(),
+    blocks                                              :: [non_neg_integer()],
+    blocks_not_requested                                :: [non_neg_integer()],
+    connect_timeout         = ?DEFAULT_CONNECT_TIMEOUT  :: integer(),
+    rest_payload                                        :: payload() | binary,
+    protocol                = ?DEFAULT_PROTOCOL         :: tcp | udp,
+    peer_id                                             :: string(),
+    request_length          = ?DEFAULT_REQUEST_LENGTH   :: pos_integer(), % 16 kb
     % Process specific fields
-    name,
-    cb_mod,
-    cb_state,
-    args,
-    parent,
-    debug,
-    hibernate_timeout,
-    timeout                 = infinity
+    name                                                :: term(),
+    cb_mod                                              :: module(),
+    cb_state                                            :: term(),
+    args                                                :: [term()],
+    parent                                              :: pid(),
+    debug                                               :: [term()],
+    hibernate_timeout                                   :: timeout(),
+    timeout                 = infinity                  :: timeout()
 }).
 
 -record(state, {

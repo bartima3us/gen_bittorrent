@@ -56,17 +56,17 @@
 %%% ============================================================================
 
 %%
-%%
+%%  Callback process init function. Call when new process is initiated.
 %%
 -callback init(
         Args :: list()
     ) ->
-        {ok, State :: term(), Timeout :: timeout() | hibernate} | % @todo implement
+        {ok, State :: term(), Timeout :: timeout() | hibernate} |
         {ok, State :: term()}.
 
 
 %%
-%%
+%%  Call when handshake is done.
 %%
 -callback peer_handshaked(
         PieceId :: piece_id_int(),
@@ -77,7 +77,7 @@
 
 
 %%
-%%
+%%  Call when peer state changes into `unchoke`.
 %%
 -callback peer_unchoked(
         PieceId :: piece_id_int(),
@@ -88,7 +88,7 @@
 
 
 %%
-%%
+%%  Call when peer state changes into `choke`.
 %%
 -callback peer_choked(
         PieceId :: piece_id_int(),
@@ -99,7 +99,7 @@
 
 
 %%
-%%
+%%  Call when block is requested.
 %%
 -callback block_requested(
         PieceId :: piece_id_int(),
@@ -112,7 +112,7 @@
 
 
 %%
-%%
+%%  Call when new block is downloaded.
 %%
 -callback block_downloaded(
         PieceId :: piece_id_int(),
@@ -126,7 +126,7 @@
 
 
 %%
-%%
+%%  Call when piece downloading is completed.
 %%
 -callback piece_completed(
         PieceId :: piece_id_int(),
@@ -137,7 +137,7 @@
 
 
 %%
-%%
+%%  Handle synchronous messages.
 %%
 -callback handle_call(
         Request :: term(),
@@ -150,7 +150,7 @@
 
 
 %%
-%%
+%%  Handle asynchronous messages.
 %%
 -callback handle_info(
         Info :: timeout | term(),
@@ -161,7 +161,7 @@
 
 
 %%
-%%
+%%  Code change function.
 %%
 -callback code_change(
         OldVsn :: (term() | {down, term()}),
@@ -173,7 +173,7 @@
 
 
 %%
-%%
+%%  Call when process will be terminated.
 %%
 -callback terminate(
         State  :: term()
@@ -186,34 +186,117 @@
 %%% API.
 %%%===================================================================
 
+%%  @doc
+%%  Starts new process without link and without name.
 %%
-%%
-%%
+-spec start(
+    CbMod       :: module(),
+    PeerIp      :: inet:ip_address(),
+    PeerPort    :: inet:port_number(),
+    PeerId      :: string(),
+    TorrentHash :: binary(),
+    PieceId     :: non_neg_integer(),
+    PieceSize   :: pos_integer(),
+    Args        :: [term()],
+    Options     :: [term()]
+) ->
+    {ok, ProcessPid :: pid()}.
+
 start(CbMod, PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args, Options) ->
     gen:start(?MODULE, nolink, CbMod, [PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args], Options).
+
+
+%%  @doc
+%%  Starts new process without link and with name.
+%%
+-spec start(
+    Name        :: term(),
+    CbMod       :: module(),
+    PeerIp      :: inet:ip_address(),
+    PeerPort    :: inet:port_number(),
+    PeerId      :: string(),
+    TorrentHash :: binary(),
+    PieceId     :: non_neg_integer(),
+    PieceSize   :: pos_integer(),
+    Args        :: [term()],
+    Options     :: [term()]
+) ->
+    {ok, ProcessPid :: pid()}.
 
 start(Name, CbMod, PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args, Options) ->
     gen:start(?MODULE, nolink, Name, CbMod, [PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args], Options).
 
+
+%%  @doc
+%%  Starts new process with link and without name.
+%%
+-spec start_link(
+    CbMod       :: module(),
+    PeerIp      :: inet:ip_address(),
+    PeerPort    :: inet:port_number(),
+    PeerId      :: string(),
+    TorrentHash :: binary(),
+    PieceId     :: non_neg_integer(),
+    PieceSize   :: pos_integer(),
+    Args        :: [term()],
+    Options     :: [term()]
+) ->
+    {ok, ProcessPid :: pid()}.
+
 start_link(CbMod, PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args, Options) ->
     gen:start(?MODULE, link, CbMod, [PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args], Options).
+
+
+%%  @doc
+%%  Starts new process with link and with name.
+%%
+-spec start_link(
+    Name        :: term(),
+    CbMod       :: module(),
+    PeerIp      :: inet:ip_address(),
+    PeerPort    :: inet:port_number(),
+    PeerId      :: string(),
+    TorrentHash :: binary(),
+    PieceId     :: non_neg_integer(),
+    PieceSize   :: pos_integer(),
+    Args        :: [term()],
+    Options     :: [term()]
+) ->
+    {ok, ProcessPid :: pid()}.
 
 start_link(Name, CbMod, PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args, Options) ->
     gen:start(?MODULE, link, Name, CbMod, [PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args], Options).
 
 
+%%  @doc
+%%  Send synchronous message with default timeout (5000 ms).
 %%
-%%
-%%
+-spec call(
+    Name    :: term(),
+    Request :: term()
+) ->
+    Response :: term().
+
 call(Name, Request) ->
     case catch gen:call(Name, '$gen_call', Request) of
-        {ok, Res}        -> Res;
+        {ok, Response}   -> Response;
         {'EXIT', Reason} -> exit({Reason, {?MODULE, call, [Name, Request]}})
     end.
 
+
+%%  @doc
+%%  Send synchronous message with timeout.
+%%
+-spec call(
+    Name    :: term(),
+    Request :: term(),
+    Timeout :: pos_integer()
+) ->
+    Response :: term().
+
 call(Name, Request, Timeout) ->
     case catch gen:call(Name, '$gen_call', Request, Timeout) of
-        {ok, Res}        -> Res;
+        {ok, Response}   -> Response;
         {'EXIT', Reason} -> exit({Reason, {?MODULE, call, [Name, Request, Timeout]}})
     end.
 
@@ -221,16 +304,39 @@ call(Name, Request, Timeout) ->
 %%  @doc
 %%  Change downloading piece to the new one.
 %%
+-spec switch_piece(
+    Name      :: term(),
+    PieceId   :: non_neg_integer(),
+    PieceSize :: pos_integer()
+) ->
+    ok.
+
 switch_piece(Name, PieceId, PieceSize) ->
     Name ! {'$switch_piece', PieceId, PieceSize},
     ok.
 
 
 %%  @doc
-%%  Stop BitTorrent process.
+%%  Stop BitTorrent process without reason.
 %%
+-spec stop(
+    Name :: term()
+) ->
+    ok.
+
 stop(Name) ->
     gen:stop(Name).
+
+
+%%  @doc
+%%  Stop BitTorrent process with reason.
+%%
+-spec stop(
+    Name    :: term(),
+    Reason  :: term(),
+    Timeout :: pos_integer()
+) ->
+    ok.
 
 stop(Name, Reason, Timeout) ->
     gen:stop(Name, Reason, Timeout).
@@ -246,7 +352,7 @@ init_it(Starter, self, ServerRef, CbMod, Args, Opts) ->
 
 init_it(Starter, Parent, Name0, CbMod, [PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args], Opts) ->
     Name = gen:name(Name0),
-    Deb = gen:debug_options(Name, Opts),
+    Debug = gen:debug_options(Name, Opts),
     HibernateTimeout = gen:hibernate_after(Opts),
     RequestLength    = get_param(request_length, Opts), % @todo validate, must be power of 2
     ConnectTimeout   = get_param(connect_timeout, Opts),
@@ -254,44 +360,54 @@ init_it(Starter, Parent, Name0, CbMod, [PeerIp, PeerPort, PeerId, TorrentHash, P
     LastBlockId      = trunc(math:ceil(PieceSize / RequestLength)),
     Blocks           = lists:seq(0, LastBlockId - 1),
     proc_lib:init_ack(Starter, {ok, self()}),
+    DoInitFun = fun (CbState, Timeout) ->
+        case do_connect(PeerIp, PeerPort, ConnectTimeout) of
+            {ok, Socket} ->
+                ok = gen_bittorrent_message:handshake(Socket, PeerId, TorrentHash),
+                ok = gen_bittorrent_helper:get_packet(Socket),
+                Data = #data{
+                    name                    = Name,
+                    socket                  = Socket,
+                    torrent_hash            = TorrentHash,
+                    peer_ip                 = PeerIp,
+                    peer_port               = PeerPort,
+                    piece_id                = PieceId,
+                    piece_size              = PieceSize,
+                    cb_mod                  = CbMod,
+                    cb_state                = CbState,
+                    connect_timeout         = ConnectTimeout,
+                    blocks                  = Blocks,
+                    blocks_not_requested    = Blocks,
+                    protocol                = Protocol,
+                    request_length          = RequestLength,
+                    peer_id                 = PeerId,
+                    args                    = Args,
+                    parent                  = Parent,
+                    debug                   = Debug,
+                    hibernate_timeout       = HibernateTimeout,
+                    timeout                 = Timeout
+                },
+                State = #state{},
+                loop(State, Data);
+            {error, Reason} ->
+                terminate(#data{name = Name, debug = Debug}, Reason)
+        end
+    end,
     case catch CbMod:init(Args) of
         {ok, CbState} ->
-            case do_connect(PeerIp, PeerPort, ConnectTimeout) of
-                {ok, Socket} ->
-                    ok = gen_bittorrent_message:handshake(Socket, PeerId, TorrentHash),
-                    ok = gen_bittorrent_helper:get_packet(Socket),
-                    Data = #data{
-                        name                    = Name,
-                        socket                  = Socket,
-                        torrent_hash            = TorrentHash,
-                        peer_ip                 = PeerIp,
-                        peer_port               = PeerPort,
-                        piece_id                = PieceId,
-                        piece_size              = PieceSize,
-                        cb_mod                  = CbMod,
-                        cb_state                = CbState,
-                        connect_timeout         = ConnectTimeout,
-                        blocks                  = Blocks,
-                        blocks_not_requested    = Blocks,
-                        protocol                = Protocol,
-                        request_length          = RequestLength,
-                        peer_id                 = PeerId,
-                        args                    = Args,
-                        parent                  = Parent,
-                        debug                   = Deb,
-                        hibernate_timeout       = HibernateTimeout
-                    },
-                    State = #state{},
-                    loop(State, Data);
-                {error, Reason} ->
-                    terminate(#data{name = Name, debug = Deb}, Reason)
-            end;
+            DoInitFun(CbState, infinity);
+        {ok, CbState, infinity} ->
+            DoInitFun(CbState, infinity);
+        {ok, CbState, hibernate} ->
+            DoInitFun(CbState, hibernate);
+        {ok, CbState, Timeout} when is_integer(Timeout) ->
+            DoInitFun(CbState, Timeout);
         {'EXIT', Reason} ->
             proc_lib:init_ack(Starter, {error, Reason}),
-            terminate(#data{name = Name, debug = Deb}, {Reason, {CbMod, init, [Args]}});
+            terminate(#data{name = Name, debug = Debug}, {Reason, {CbMod, init, [Args]}});
         Else ->
             proc_lib:init_ack(Starter, {bad_init_return, Else}),
-            terminate(#data{name = Name, debug = Deb}, {bad_init_return, Else})
+            terminate(#data{name = Name, debug = Debug}, {bad_init_return, Else})
     end.
 
 
