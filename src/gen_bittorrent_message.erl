@@ -100,7 +100,7 @@ request_piece(Socket, PieceId, PieceBegin, PieceLength) when is_integer(PieceId)
     request_piece(Socket, PieceIdBin, PieceBegin, PieceLength);
 
 request_piece(Socket, PieceId, PieceBegin, PieceLength) when is_binary(PieceId) ->
-    PieceLengthBin = <<PieceLength:32>>, % @todo move to generic helper
+    PieceLengthBin = gen_bittorrent_helper:int_piece_id_to_bin(PieceLength),
     gen_tcp:send(
         Socket,
         <<
