@@ -1,7 +1,7 @@
 -type payload()      :: binary().
 -type piece_id_bin() :: binary().
--type piece_id_int() :: integer().
--type block_id_int() :: integer().
+-type piece_id_int() :: non_neg_integer().
+-type block_id_int() :: non_neg_integer().
 
 -record(piece_data, {
     piece_index  :: piece_id_int(),
