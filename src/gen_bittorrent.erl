@@ -740,7 +740,7 @@ handle_payload(State = #state{handshake = handshaked, leecher_state = interested
     #data{blocks = NewBlocks} = NewData2,
     case NewBlocks of
         [_|_] -> {ok, State#state{handshake = handshaked, leecher_state = interested, peer_state = NewPeerState}, NewData2};
-        []    -> {completed, State, Data}
+        []    -> {completed, State, NewData2}
     end.
 
 

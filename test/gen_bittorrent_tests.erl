@@ -292,6 +292,26 @@ handle_payload_test_() ->
                 )
             end
         },
+        {"Handle third state. Handshaked, interested, unchoked. Complete piece.",
+            fun() ->
+                ?assertEqual(
+                    {completed, State2, Data#data{cb_state = NewCbState, blocks_not_requested = [], blocks = []}},
+                    gen_bittorrent:handle_payload(State2, Data#data{blocks_not_requested = [], blocks = [0, 1]}, ParsedPayload)
+                ),
+                ?assertEqual(
+                    1,
+                    meck:num_calls(gen_bittorrent_cb, peer_choked, ['_', '_'])
+                ),
+                ?assertEqual(
+                    4,
+                    meck:num_calls(gen_bittorrent_cb, block_downloaded, [PieceId, '_', '_', '_', '_'])
+                ),
+                ?assertEqual(
+                    12,
+                    meck:num_calls(gen_bittorrent_cb, block_requested, [PieceId, '_', '_', '_'])
+                )
+            end
+        },
         {"Handle third state. Handshaked, interested, unchoked. Get choke. Don't request if all pieces are requested.",
             fun() ->
                 ?assertEqual(
