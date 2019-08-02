@@ -58,7 +58,7 @@ gen_bittorrent:stop(Name :: term(), Reason :: term(), Timeout :: pos_integer()).
 ```
 
 
-More complex example can be found: https://github.com/bartima3us/erl-bittorrent
+More complex usage example can be found: https://github.com/bartima3us/erl-bittorrent
 
 ## <a name="tests">Tests</a> ##
 
