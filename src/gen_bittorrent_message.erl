@@ -96,11 +96,11 @@ bitfield(Socket, Bitfield) ->
 %% Send `request piece` message
 %%
 request_piece(Socket, PieceId, PieceBegin, PieceLength) when is_integer(PieceId) ->
-    PieceIdBin = gen_bittorrent_helper:int_piece_id_to_bin(PieceId),
+    PieceIdBin = gen_bittorrent_helper:int_to_bin32(PieceId),
     request_piece(Socket, PieceIdBin, PieceBegin, PieceLength);
 
 request_piece(Socket, PieceId, PieceBegin, PieceLength) when is_binary(PieceId) ->
-    PieceLengthBin = gen_bittorrent_helper:int_piece_id_to_bin(PieceLength),
+    PieceLengthBin = gen_bittorrent_helper:int_to_bin32(PieceLength),
     gen_tcp:send(
         Socket,
         <<
@@ -152,7 +152,7 @@ piece(Socket, PieceId, Begin, Block) ->
 %% Send `cancel` message
 %%
 cancel(Socket, PieceId, PieceBegin, PieceLength) when is_integer(PieceId) ->
-    PieceIdBin = gen_bittorrent_helper:int_piece_id_to_bin(PieceId),
+    PieceIdBin = gen_bittorrent_helper:int_to_bin32(PieceId),
     cancel(Socket, PieceIdBin, PieceBegin, PieceLength);
 
 cancel(Socket, PieceId, PieceBegin, PieceLength) when is_binary(PieceId) ->

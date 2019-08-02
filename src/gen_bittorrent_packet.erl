@@ -97,7 +97,7 @@ identify(FullData = <<0, 0, 0, 5, 4, Data/bytes>>, Acc) ->
             {ok, lists:reverse(Acc), FullData};
         Data ->
             <<Payload:PayloadLength/bytes, Rest/bytes>> = Data,
-            identify(Rest, [{have, gen_bittorrent_helper:bin_piece_id_to_int(Payload)} | Acc])
+            identify(Rest, [{have, gen_bittorrent_helper:bin32_to_int(Payload)} | Acc])
     end;
 
 %
@@ -128,7 +128,7 @@ identify(FullData = <<0, 0, 0, 13, 6, Data/bytes>>, Acc) ->
         Data ->
             <<PieceIndex:4/bytes, BlockOffset:4/bytes, BlockLength:4/bytes, Rest/bytes>> = Data,
             Request = #request_data{
-                piece_index  = gen_bittorrent_helper:bin_piece_id_to_int(PieceIndex),
+                piece_index  = gen_bittorrent_helper:bin32_to_int(PieceIndex),
                 block_offset = BlockOffset,
                 length       = BlockLength
             },
@@ -148,7 +148,7 @@ identify(FullData = <<Length:4/bytes, 7, PieceIndex:4/bytes, BlockOffset:4/bytes
             Piece = #piece_data{
                 payload      = Payload,
                 length       = Length,
-                piece_index  = gen_bittorrent_helper:bin_piece_id_to_int(PieceIndex),
+                piece_index  = gen_bittorrent_helper:bin32_to_int(PieceIndex),
                 block_offset = BlockOffset
             },
             identify(Rest, [{piece, Piece} | Acc])

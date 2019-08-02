@@ -99,7 +99,7 @@ block_downloaded(PieceId, Payload, Offset, _Length, State) ->
         io_device     = IoDevice,
         piece_size    = PieceSize
     } = State,
-    OffsetInt = gen_bittorrent_helper:bin_piece_id_to_int(Offset),
+    OffsetInt = gen_bittorrent_helper:bin32_to_int(Offset),
     ok = write_payload(IoDevice, PieceId, OffsetInt, PieceSize, Payload),
     ok = gen_event:notify(EventMgrPid, {block_downloaded, PieceId}),
     {ok, State}.

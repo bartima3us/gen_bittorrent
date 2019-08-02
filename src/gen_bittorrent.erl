@@ -658,7 +658,7 @@ request_piece(Data) ->
                         blocks_not_requested = BlocksNotRequestedAcc
                     } = DataAcc,
                     {ok, {OffsetBin, NextLength}} = get_request_data(NextBlockId, PieceSize, RequestLength),
-                    PieceIdBin = gen_bittorrent_helper:int_piece_id_to_bin(PieceId),
+                    PieceIdBin = gen_bittorrent_helper:int_to_bin32(PieceId),
                     PieceSizeBin = <<NextLength:32>>,
                     Message = gen_bittorrent_message:create_pipeline_request_piece(MsgAcc, PieceIdBin, OffsetBin, PieceSizeBin),
                     NewCbStateAcc = case catch CbMod:block_requested(PieceId, OffsetBin, NextLength, CbStateAcc) of

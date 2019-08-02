@@ -13,8 +13,8 @@
 -export([
     urlencode/1,
     get_packet/1,
-    bin_piece_id_to_int/1,
-    int_piece_id_to_bin/1
+    bin32_to_int/1,
+    int_to_bin32/1
 ]).
 
 
@@ -72,17 +72,17 @@ urlencode(String) ->
 
 
 %% @doc
-%% Convert piece ID from binary to integer
-%% @todo make function generic
-bin_piece_id_to_int(PieceId) when is_binary(PieceId) ->
-    <<Id:32>> = PieceId,
-    Id.
+%% Convert from 32 bits binary to integer
+%%
+bin32_to_int(Bin) when is_binary(Bin) ->
+    <<Int:32>> = Bin,
+    Int.
 
 %% @doc
-%% Convert piece ID from integer to binary
-%% @todo make function generic
-int_piece_id_to_bin(PieceId) when is_integer(PieceId) ->
-    <<PieceId:32>>.
+%% Convert from integer to 32 bits binary
+%%
+int_to_bin32(Int) when is_integer(Int) ->
+    <<Int:32>>.
 
 
 %% @doc

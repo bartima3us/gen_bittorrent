@@ -157,7 +157,7 @@ parse_test_() ->
     PieceRecord = #piece_data{
         payload      = PiecePayload1,
         length       = <<16#00, 16#00, 16#00, 16#5c>>,
-        piece_index  = gen_bittorrent_helper:bin_piece_id_to_int(<<16#00, 16#00, 16#01, 16#c8>>),
+        piece_index  = gen_bittorrent_helper:bin32_to_int(<<16#00, 16#00, 16#01, 16#c8>>),
         block_offset = <<16#00, 16#00, 16#00, 16#00>>
     },
     % Concated message (packet)

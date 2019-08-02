@@ -162,9 +162,9 @@ handle_info({tcp, Socket, Payload}, State = #state{handshake = true, unchoke = t
                 block_offset = OffsetBin,
                 length       = Length
             } = RequestData,
-            PieceIdBin = gen_bittorrent_helper:int_piece_id_to_bin(PieceId),
-            OffsetInt = gen_bittorrent_helper:bin_piece_id_to_int(OffsetBin),
-            LengthInt = gen_bittorrent_helper:bin_piece_id_to_int(Length),
+            PieceIdBin = gen_bittorrent_helper:int_to_bin32(PieceId),
+            OffsetInt = gen_bittorrent_helper:bin32_to_int(OffsetBin),
+            LengthInt = gen_bittorrent_helper:bin32_to_int(Length),
             Offset = PieceSize * PieceId + OffsetInt,
             {ok, Block} = file:pread(IoDevice, {bof, Offset}, LengthInt),
             ok = gen_bittorrent_message:piece(Socket, PieceIdBin, OffsetBin, Block)
