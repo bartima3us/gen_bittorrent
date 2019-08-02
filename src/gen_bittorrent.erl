@@ -44,6 +44,7 @@
 -export([
     request_piece/1,
     get_request_data/3,
+    get_peer_new_state/2,
     process_downloaded_block/2,
     handle_payload/3
 ]).

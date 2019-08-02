@@ -84,6 +84,35 @@ get_request_data_test_() ->
     ].
 
 
+get_peer_new_state_test_() ->
+    [
+        {"Change state from choke to unchoke.",
+            fun() ->
+                ?assertEqual(
+                    unchoked,
+                    gen_bittorrent:get_peer_new_state([{handshake, true}, {unchoke, true}], choked)
+                )
+            end
+        },
+        {"Change state from unchoke to choke.",
+            fun() ->
+                ?assertEqual(
+                    choked,
+                    gen_bittorrent:get_peer_new_state([{choke, true}], unchoked)
+                )
+            end
+        },
+        {"Keep current state.",
+            fun() ->
+                ?assertEqual(
+                    unchoked,
+                    gen_bittorrent:get_peer_new_state([{handshake, true}], unchoked)
+                )
+            end
+        }
+    ].
+
+
 process_downloaded_block_test_() ->
     OldCbState = {old_cb_state},
     NewCbState = {new_cb_state},
