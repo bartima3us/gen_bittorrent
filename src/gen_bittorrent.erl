@@ -15,10 +15,7 @@
 -author("bartimaeus").
 
 -include("gen_bittorrent.hrl").
-
--define(DEFAULT_REQUEST_LENGTH, 16384).
--define(DEFAULT_PROTOCOL, tcp).
--define(DEFAULT_CONNECT_TIMEOUT, 5000).
+-include("gen_bittorrent_internal.hrl").
 
 %% API
 -export([
@@ -43,38 +40,15 @@
     wake_hibernate/2
 ]).
 
--record(state, {
-    handshake       = not_handshaked    :: not_handshaked | handshaked,
-    leecher_state   = not_interested    :: not_interested | interested,
-    peer_state      = choked            :: unchoked | choked
-}).
+-ifdef(TEST).
+-export([
+    request_piece/1,
+    get_request_data/3,
+    process_downloaded_block/2,
+    handle_payload/3
+]).
+-endif.
 
-% @todo specify types
--record(data, {
-    % BitTorrent specific fields
-    socket                  :: port(),
-    torrent_hash,
-    peer_ip,
-    peer_port,
-    piece_id,
-    piece_size,
-    blocks,
-    blocks_not_requested,
-    connect_timeout         = ?DEFAULT_CONNECT_TIMEOUT,
-    rest_payload,
-    protocol                = ?DEFAULT_PROTOCOL,
-    peer_id,
-    request_length          = ?DEFAULT_REQUEST_LENGTH, % 16 kb
-    % Process specific fields
-    name,
-    cb_mod,
-    cb_state,
-    args,
-    parent,
-    debug,
-    hibernate_timeout,
-    timeout                 = infinity
-}).
 
 %%% ============================================================================
 %%% Callback definitions.
@@ -558,7 +532,7 @@ request_piece(Data) ->
     %
     % Maybe PieceData process downloaded all pieces?
     case BlocksNotRequested of
-        [_|_] -> % @todo make requesting in chunks
+        [_|_] -> % @todo make requesting in chunks?
             % If not, make requests for blocks
             {RequestMessage, NewData} = lists:foldl(
                 fun (NextBlockId, {MsgAcc, DataAcc}) ->
@@ -569,7 +543,7 @@ request_piece(Data) ->
                     {ok, {OffsetBin, NextLength}} = get_request_data(NextBlockId, PieceSize, RequestLength),
                     PieceIdBin = gen_bittorrent_helper:int_piece_id_to_bin(PieceId),
                     PieceSizeBin = <<NextLength:32>>,
-                    Message = gen_bittorrent_message:pipeline_request_piece(MsgAcc, PieceIdBin, OffsetBin, PieceSizeBin),
+                    Message = gen_bittorrent_message:create_pipeline_request_piece(MsgAcc, PieceIdBin, OffsetBin, PieceSizeBin),
                     NewCbStateAcc = case catch CbMod:block_requested(PieceId, OffsetBin, NextLength, CbStateAcc) of
                         {ok, NewCbState} -> NewCbState;
                         {stop, Reason}   -> terminate(DataAcc, Reason);
@@ -635,7 +609,7 @@ process_downloaded_block(ParsedPayload, Data) ->
         request_length  = RequestLength,
         cb_mod          = CbMod
     } = Data,
-    lists:foldl(
+    {NewCbState, NewBlocks, NewDebug} = lists:foldl(
         fun
             ({piece, PD = #piece_data{}}, Acc = {AccCbState, AccBlocksLeft, AccDebug}) ->
                 #piece_data{
@@ -666,7 +640,12 @@ process_downloaded_block(ParsedPayload, Data) ->
         end,
         {CbState0, Blocks, Debug},
         ParsedPayload
-    ).
+    ),
+    Data#data{
+        cb_state = NewCbState,
+        blocks   = NewBlocks,
+        debug    = NewDebug
+    }.
 
 
 %%  @private
@@ -730,29 +709,36 @@ handle_payload(State = #state{handshake = handshaked, leecher_state = interested
     #data{
         cb_mod   = CbMod,
         debug    = Debug0,
-        piece_id = PieceId
+        piece_id = PieceId,
+        blocks   = Blocks
     } = Data,
     NewData0 = #data{cb_state = NewCbState0} = request_piece(Data),
-    {NewCbState1, NewBlocks, Debug1} = process_downloaded_block(ParsedPayload, Data#data{cb_state = NewCbState0, debug = Debug0}),
-    {NewPeerState, NewCbState4, Debug2} = case get_peer_new_state(ParsedPayload, unchoked) of
+    NewData1 = process_downloaded_block(ParsedPayload, Data#data{cb_state = NewCbState0, debug = Debug0}),
+    #data{cb_state = NewCbState1, blocks = NewBlocks0, debug = Debug1} = NewData1,
+    {NewPeerState, NewData2} = case get_peer_new_state(ParsedPayload, unchoked) of
         unchoked ->
-            {unchoked, NewCbState1, Debug1};
+            Debug2 = sys:handle_debug(Debug1, fun format_event/3, ?MODULE, {in, unchoked}),
+            {unchoked, NewData0#data{
+                blocks   = NewBlocks0,
+                cb_state = NewCbState1,
+                debug    = Debug2
+            }};
         choked ->
             NewCbState3 = case catch CbMod:peer_choked(PieceId, NewCbState1) of
                 {ok, NewCbState2} -> NewCbState2;
                 {stop, Reason}    -> terminate(NewData0, Reason);
                 {'EXIT', Reason}  -> terminate(NewData0, Reason)
             end,
-            Deb = sys:handle_debug(Debug1, fun format_event/3, ?MODULE, {in, choked}),
-            {choked, NewCbState3, Deb}
+            Debug2 = sys:handle_debug(Debug1, fun format_event/3, ?MODULE, {in, choked}),
+            {choked, NewData0#data{
+                blocks   = Blocks,
+                cb_state = NewCbState3,
+                debug    = Debug2
+            }}
     end,
-    NewData1 = NewData0#data{
-        blocks   = NewBlocks,
-        cb_state = NewCbState4,
-        debug    = Debug2
-    },
+    #data{blocks = NewBlocks} = NewData2,
     case NewBlocks of
-        [_|_] -> {ok, State#state{handshake = handshaked, leecher_state = interested, peer_state = NewPeerState}, NewData1};
+        [_|_] -> {ok, State#state{handshake = handshaked, leecher_state = interested, peer_state = NewPeerState}, NewData2};
         []    -> {completed, State, Data}
     end.
 

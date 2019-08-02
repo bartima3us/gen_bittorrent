@@ -21,7 +21,7 @@
     bitfield/2,
     request_piece/2,
     request_piece/4,
-    pipeline_request_piece/4,
+    create_pipeline_request_piece/4,
     piece/4,
     cancel/4
 ]).
@@ -119,7 +119,7 @@ request_piece(Socket, Message) ->
 %%  @doc
 %%  Concat `request piece` messages for pipelining.
 %%
-pipeline_request_piece(MsgAcc, PieceIdBin, OffsetBin, PieceLengthBin) ->
+create_pipeline_request_piece(MsgAcc, PieceIdBin, OffsetBin, PieceLengthBin) ->
     <<
         MsgAcc/binary,
         00, 00, 00, 16#0d,      % Message length
