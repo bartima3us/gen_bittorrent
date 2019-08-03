@@ -552,7 +552,8 @@ decode_message(Msg, State, Data, Hibernation) ->
                 piece_id             = NewPieceId,
                 piece_size           = NewPieceSize,
                 blocks               = Blocks,
-                blocks_not_requested = Blocks
+                blocks_not_requested = Blocks,
+                rest_payload         = undefined
             },
             NewData1 = request_piece(NewData0),
             ok = gen_bittorrent_helper:get_packet(Socket),
