@@ -105,13 +105,13 @@ test_basic(Config) ->
     0 = meck:num_calls(gen_bittorrent_event_handler, handle_event, [{unchoked, ?PIECE_ID2}, '_']),
     % Check for block request
     ok = meck:wait(gen_bittorrent_event_handler, handle_event, [{block_requested, ?PIECE_ID2}, '_'], ?MECK_TIMEOUT),
-    3 = meck:num_calls(gen_bittorrent_event_handler, handle_event, [{block_requested, ?PIECE_ID2}, '_']),
     % Check for block downloaded
     ok = meck:wait(gen_bittorrent_event_handler, handle_event, [{block_downloaded, ?PIECE_ID2}, '_'], ?MECK_TIMEOUT),
     % Check for completed
     ok = meck:wait(gen_bittorrent_event_handler, handle_event, [{completed, ?PIECE_ID2}, '_'], ?MECK_TIMEOUT),
-    1 = meck:num_calls(gen_bittorrent_event_handler, handle_event, [{completed, ?PIECE_ID2}, '_']),
+    3 = meck:num_calls(gen_bittorrent_event_handler, handle_event, [{block_requested, ?PIECE_ID2}, '_']),
     3 = meck:num_calls(gen_bittorrent_event_handler, handle_event, [{block_downloaded, ?PIECE_ID2}, '_']),
+    1 = meck:num_calls(gen_bittorrent_event_handler, handle_event, [{completed, ?PIECE_ID2}, '_']),
     % Compare files
     {ok, SeederFile} = file:read_file(FileSrc),
     {ok, LeecherFile} = file:read_file(FileDst),
