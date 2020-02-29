@@ -2,7 +2,6 @@ gen_bittorrent
 =====
 
 - [Introduction](#introduction)
-- [Status](#status)
 - [Usage](#usage)
 - [Tests](#tests)
 
