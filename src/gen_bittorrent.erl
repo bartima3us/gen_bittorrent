@@ -1,19 +1,18 @@
 %%%-------------------------------------------------------------------
-%%% @author bartimaeus
-%%% @copyright (C) 2018, sarunas.bartusevicius@gmail.com
+%%% @author sarunas
+%%% @copyright (C) 2020, sarunas.bartusevicius@gmail.com
 %%% @doc
-%%% Generic gen_bittorrent behaviour implemented as OTP compliant special process FSM.
+%%% Generic gen_bittorrent behaviour implemented as OTP behaviour.
 %%% The purpose of this behaviour is to download a piece.
 %%% It can be used as a high level transport protocol for any software.
-%%% To avoid any unnecessary overhead, no generic behaviour was used.
-%%% gen_bittorrent relies only on proc_lib, sys, gen modules.
+%%% gen_bittorrent relies on gen_statem behaviour.
 %%% Implementation example can be found: https://github.com/bartima3us/erl-bittorrent
 %%% @end
-%%% Created : 21. Jul 2019 18.12
+%%% Created : 29. Feb 2020 14.11
 %%%-------------------------------------------------------------------
 -module(gen_bittorrent).
 -author("bartimaeus").
-
+-behavior(gen_statem).
 -include("gen_bittorrent.hrl").
 -include("gen_bittorrent_internal.hrl").
 
@@ -30,14 +29,11 @@
     stop/3
 ]).
 
+%% gen_statem callbacks
 -export([
-    init_it/6,
-    system_continue/3,
-    system_terminate/4,
-    system_get_state/1,
-    system_replace_state/2,
-    system_code_change/4,
-    wake_hibernate/2
+    init/1,
+    callback_mode/0,
+    handle_event/4
 ]).
 
 -ifdef(TEST).
@@ -45,8 +41,7 @@
     request_piece/1,
     get_request_data/3,
     get_peer_new_state/2,
-    process_downloaded_block/2,
-    handle_payload/3
+    process_downloaded_block/2
 ]).
 -endif.
 
@@ -203,7 +198,7 @@
     {ok, ProcessPid :: pid()}.
 
 start(CbMod, PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args, Options) ->
-    gen:start(?MODULE, nolink, CbMod, [PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args], Options).
+    gen_statem:start(?MODULE, [CbMod, PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args], Options).
 
 
 %%  @doc
@@ -224,7 +219,7 @@ start(CbMod, PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args, Op
     {ok, ProcessPid :: pid()}.
 
 start(Name, CbMod, PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args, Options) ->
-    gen:start(?MODULE, nolink, Name, CbMod, [PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args], Options).
+    gen_statem:start(Name, ?MODULE, [CbMod, PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args], Options).
 
 
 %%  @doc
@@ -244,7 +239,7 @@ start(Name, CbMod, PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Ar
     {ok, ProcessPid :: pid()}.
 
 start_link(CbMod, PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args, Options) ->
-    gen:start(?MODULE, link, CbMod, [PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args], Options).
+    gen_statem:start_link(?MODULE, [CbMod, PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args], Options).
 
 
 %%  @doc
@@ -265,7 +260,7 @@ start_link(CbMod, PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Arg
     {ok, ProcessPid :: pid()}.
 
 start_link(Name, CbMod, PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args, Options) ->
-    gen:start(?MODULE, link, Name, CbMod, [PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args], Options).
+    gen_statem:start_link(Name, ?MODULE, [CbMod, PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args], Options).
 
 
 %%  @doc
@@ -278,10 +273,7 @@ start_link(Name, CbMod, PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSiz
     Response :: term().
 
 call(Name, Request) ->
-    case catch gen:call(Name, '$gen_call', Request) of
-        {ok, Response}   -> Response;
-        {'EXIT', Reason} -> exit({Reason, {?MODULE, call, [Name, Request]}})
-    end.
+    gen_statem:call(Name, {call, Request}).
 
 
 %%  @doc
@@ -295,10 +287,7 @@ call(Name, Request) ->
     Response :: term().
 
 call(Name, Request, Timeout) ->
-    case catch gen:call(Name, '$gen_call', Request, Timeout) of
-        {ok, Response}   -> Response;
-        {'EXIT', Reason} -> exit({Reason, {?MODULE, call, [Name, Request, Timeout]}})
-    end.
+    gen_statem:call(Name, {call, Request}, Timeout).
 
 
 %%  @doc
@@ -312,8 +301,7 @@ call(Name, Request, Timeout) ->
     ok.
 
 switch_piece(Name, PieceId, PieceSize) ->
-    Name ! {'$switch_piece', PieceId, PieceSize},
-    ok.
+    gen_statem:cast(Name, {switch_piece, PieceId, PieceSize}).
 
 
 %%  @doc
@@ -325,48 +313,43 @@ switch_piece(Name, PieceId, PieceSize) ->
     ok.
 
 stop(Name) ->
-    gen:stop(Name).
+    gen_statem:stop(Name).
 
 
 %%  @doc
-%%  Stop BitTorrent process with reason.
+%%  Stop BitTorrent process with reason and timeout.
 %%
 -spec stop(
     Name    :: term(),
     Reason  :: term(),
-    Timeout :: pos_integer()
+    Timeout :: pos_integer() | infinity
 ) ->
     ok.
 
 stop(Name, Reason, Timeout) ->
-    gen:stop(Name, Reason, Timeout).
+    gen_statem:stop(Name, Reason, Timeout).
 
 
 
 %%%===================================================================
-%%% Callback functions for proc_lib.
+%%% gen_server callbacks
 %%%===================================================================
 
-init_it(Starter, self, ServerRef, CbMod, Args, Opts) ->
-    init_it(Starter, self(), ServerRef, CbMod, Args, Opts);
-
-init_it(Starter, Parent, Name0, CbMod, [PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args], Opts) ->
-    Name = gen:name(Name0),
-    Debug = gen:debug_options(Name, Opts),
-    HibernateTimeout = gen:hibernate_after(Opts),
-    RequestLength    = get_param(request_length, Opts), % @todo validate, must be power of 2
-    ConnectTimeout   = get_param(connect_timeout, Opts),
-    Protocol         = get_param(protocol, Opts),
+%%
+%%
+%%
+init([CbMod, PeerIp, PeerPort, PeerId, TorrentHash, PieceId, PieceSize, Args]) ->
+    RequestLength    = get_param(request_length, Args), % @todo validate, must be power of 2
+    ConnectTimeout   = get_param(connect_timeout, Args),
+    Protocol         = get_param(protocol, Args),
     LastBlockId      = trunc(math:ceil(PieceSize / RequestLength)),
     Blocks           = lists:seq(0, LastBlockId - 1),
-    proc_lib:init_ack(Starter, {ok, self()}),
-    DoInitFun = fun (CbState, Timeout) ->
+    DoInitFun = fun (CbState, Actions) ->
         case do_connect(PeerIp, PeerPort, ConnectTimeout) of
             {ok, Socket} ->
                 ok = gen_bittorrent_message:handshake(Socket, PeerId, TorrentHash),
                 ok = gen_bittorrent_helper:get_packet(Socket),
                 Data = #data{
-                    name                    = Name,
                     socket                  = Socket,
                     torrent_hash            = TorrentHash,
                     peer_ip                 = PeerIp,
@@ -381,237 +364,195 @@ init_it(Starter, Parent, Name0, CbMod, [PeerIp, PeerPort, PeerId, TorrentHash, P
                     protocol                = Protocol,
                     request_length          = RequestLength,
                     peer_id                 = PeerId,
-                    args                    = Args,
-                    parent                  = Parent,
-                    debug                   = Debug,
-                    hibernate_timeout       = HibernateTimeout,
-                    timeout                 = Timeout
+                    args                    = Args
                 },
-                State = #state{},
-                loop(State, Data);
+                {ok, #state{}, Data, Actions};
             {error, Reason} ->
-                terminate(#data{name = Name, debug = Debug}, Reason)
+                stop(Reason)
         end
     end,
     case catch CbMod:init(Args) of
         {ok, CbState} ->
-            DoInitFun(CbState, infinity);
+            DoInitFun(CbState, []);
         {ok, CbState, infinity} ->
-            DoInitFun(CbState, infinity);
+            DoInitFun(CbState, []);
         {ok, CbState, hibernate} ->
-            DoInitFun(CbState, hibernate);
+            DoInitFun(CbState, [hibernate]);
         {ok, CbState, Timeout} when is_integer(Timeout) ->
-            DoInitFun(CbState, Timeout);
+            DoInitFun(CbState, [{{timeout, global}, Timeout, timeout}]);
         {'EXIT', Reason} ->
-            proc_lib:init_ack(Starter, {error, Reason}),
-            terminate(#data{name = Name, debug = Debug}, {Reason, {CbMod, init, [Args]}});
+            stop(Reason);
         Else ->
-            proc_lib:init_ack(Starter, {bad_init_return, Else}),
-            terminate(#data{name = Name, debug = Debug}, {bad_init_return, Else})
-    end.
-
-
-
-%%%===================================================================
-%%% Callback functions for system messages handling.
-%%%===================================================================
-
-%%
-%%
-%%
-system_continue(Parent, Deb, {State, Data}) ->
-    loop(State, Data#data{parent = Parent, debug = Deb}).
-
-
-%%
-%%
-%%
-system_terminate(Reason, _Parent, _Deb, _SD) ->
-    exit(Reason).   % @todo fix?
-
-
-%%
-%%
-%%
-system_get_state({_State, #data{cb_state = CbState}}) ->
-    {ok, CbState}.
-
-
-%%
-%%
-%%
-system_replace_state(StateFun, {State, Data = #data{cb_state = CbState}}) ->
-    NewCbState = StateFun(CbState),
-    {ok, NewCbState, {State, Data#data{cb_state = NewCbState}}}.
-
-
-%%
-%%
-%%
-system_code_change({State, Data = #data{cb_mod = CbMod, cb_state = CbState}}, _Module, OldVsn, Extra) ->
-    case catch CbMod:code_change(OldVsn, CbState, Extra) of
-        {ok, NewState} -> {ok, {State, Data#data{cb_state = NewState}}};
-        Other          -> Other
+            stop({bad_init_return, Else})
     end.
 
 
 %%
 %%
 %%
-wake_hibernate(State, Data) ->
-    Msg1 = receive
-        Msg0 -> Msg0
+callback_mode() ->
+    [handle_event_function].
+
+
+
+%%%===================================================================
+%%% States
+%%%===================================================================
+
+%--------------------------------------------------------------------
+%   First state. Trying to handshake.
+%
+handle_event(
+    info,
+    {tcp, Port, Packet},
+    State = #state{handshake = not_handshaked, leecher_state = not_interested, peer_state = choked},
+    SD = #data{socket = Socket, cb_mod = CbMod, cb_state = CbState, piece_id = PieceId, rest_payload = CurrRestPayload}
+) when Port =:= Socket ->
+    {ok, ParsedPayload, NewRestPayload} = gen_bittorrent_packet:parse(Packet, CurrRestPayload),
+    NewCbState = case proplists:get_value(handshake, ParsedPayload) of
+        true ->
+            case catch CbMod:peer_handshaked(PieceId, CbState) of
+                {ok, NewCbState0} ->
+                    gen_bittorrent_message:interested(Socket),
+                    ok = gen_bittorrent_helper:get_packet(Socket),
+                    NewCbState0;
+                {stop, Reason} ->
+                    stop(Reason);
+                {'EXIT', Reason} ->
+                    stop(Reason)
+            end;
+        _ ->
+            CbState
     end,
-    decode_message(Msg1, State, Data#data{timeout = infinity}, true).
+    {next_state, State#state{handshake = handshaked, leecher_state = interested}, SD#data{cb_state = NewCbState, rest_payload = NewRestPayload}};
 
+%--------------------------------------------------------------------
+%   Second state. Enter interested mode. Trying to unchoke peer.
+%
+handle_event(
+    info,
+    {tcp, Port, Packet},
+    State = #state{handshake = handshaked, leecher_state = interested, peer_state = choked},
+    SD = #data{socket = Socket, cb_mod = CbMod, piece_id = PieceId, rest_payload = CurrRestPayload}
+) when Port =:= Socket ->
+    SD0 = #data{cb_state = NewCbState0} = request_piece(SD),
+    {ok, ParsedPayload, NewRestPayload} = gen_bittorrent_packet:parse(Packet, CurrRestPayload),
+    ok = gen_bittorrent_helper:get_packet(Socket),
+    {NewPeerState, NewCbState3} = case get_peer_new_state(ParsedPayload, choked) of
+        unchoked ->
+            NewCbState2 = case catch CbMod:peer_unchoked(PieceId, NewCbState0) of
+                {ok, NewCbState1} -> NewCbState1;
+                {stop, Reason}    -> stop(Reason);
+                {'EXIT', Reason}  -> stop(Reason)
+            end,
+            {unchoked, NewCbState2};
+        choked ->
+            {choked, NewCbState0}
+    end,
+    {next_state, State#state{peer_state = NewPeerState}, SD0#data{cb_state = NewCbState3, rest_payload = NewRestPayload}};
 
-
-%%%===================================================================
-%%% Internal generic functions.
-%%%===================================================================
-
-%%
-%%
-%%
-loop(State, Data = #data{timeout = hibernate}) ->
-    proc_lib:hibernate(?MODULE, wake_hibernate, [State, Data]);
-
-loop(State, Data = #data{timeout = infinity, hibernate_timeout = HibernateTimeout}) ->
-    receive
-        Msg -> decode_message(Msg, State, Data#data{timeout = infinity}, false)
-    after HibernateTimeout ->
-        loop(State, Data = #data{timeout = hibernate})
+%--------------------------------------------------------------------
+%   Third state. Retrieve blocks from peer.
+%
+handle_event(
+    info,
+    {tcp, Port, Packet},
+    State = #state{handshake = handshaked, leecher_state = interested, peer_state = unchoked},
+    SD = #data{socket = Socket, cb_mod = CbMod, cb_state = CbState, piece_id = PieceId, rest_payload = CurrRestPayload, blocks = Blocks}
+) when Port =:= Socket ->
+    SD0 = #data{cb_state = NewCbState0} = request_piece(SD),
+    {ok, ParsedPayload, NewRestPayload} = gen_bittorrent_packet:parse(Packet, CurrRestPayload),
+    ok = gen_bittorrent_helper:get_packet(Socket),
+    SD1 = process_downloaded_block(ParsedPayload, SD0#data{cb_state = NewCbState0}),
+    #data{cb_state = NewCbState1, blocks = NewBlocks0} = SD1,
+    {NewPeerState, SD2} = case get_peer_new_state(ParsedPayload, unchoked) of
+        unchoked ->
+            {unchoked, SD1#data{
+                blocks   = NewBlocks0,
+                cb_state = NewCbState1
+            }};
+        choked ->
+            NewCbState3 = case catch CbMod:peer_choked(PieceId, NewCbState1) of
+                {ok, NewCbState2} -> NewCbState2;
+                {stop, Reason0}    -> stop(Reason0);
+                {'EXIT', Reason0}  -> stop(Reason0)
+            end,
+            {choked, SD1#data{
+                blocks   = Blocks,
+                cb_state = NewCbState3
+            }}
+    end,
+    #data{blocks = NewBlocks} = SD2,
+    case NewBlocks of
+        [_|_] ->
+            {next_state, State#state{peer_state = NewPeerState}, SD2#data{rest_payload = NewRestPayload}};
+        []    ->
+            case catch CbMod:piece_completed(PieceId, CbState) of
+                {ok, NewCbState} ->
+                    {next_state, State#state{peer_state = NewPeerState}, SD2#data{cb_state = NewCbState, rest_payload = NewRestPayload}};
+                {'EXIT', Reason1} ->
+                    stop(Reason1);
+                {stop, Reason1} ->
+                    stop(Reason1)
+            end
     end;
 
-loop(State, Data = #data{timeout = Timeout}) ->
-    Msg1 = receive
-        Msg0 -> Msg0
-    after Timeout ->
-        timeout
-    end,
-    decode_message(Msg1, State, Data#data{timeout = infinity}, false).
-
-
-%%
-%%
-%%
-decode_message(Msg, State, Data, Hibernation) ->
+%--------------------------------------------------------------------
+%   All state events
+%
+handle_event(cast, {switch_piece, NewPieceId, NewPieceSize}, _AnyState, SD) ->
     #data{
-        socket          = Socket,
-        rest_payload    = CurrRestPayload,
-        cb_mod          = CbMod,
-        cb_state        = CbState,
-        name            = Name,
-        parent          = Parent,
-        debug           = Deb,
-        request_length  = RequestLength,
-        piece_id        = PieceId
-    } = Data,
-    case Msg of
-        {tcp, Port, Packet} when Port =:= Socket ->
-            Deb2 = sys:handle_debug(Deb, fun format_event/3, ?MODULE, {in, {tcp, Port}}),
-            {ok, ParsedPayload, NewRestPayload} = gen_bittorrent_packet:parse(Packet, CurrRestPayload),
-            case handle_payload(State, Data#data{rest_payload = NewRestPayload}, ParsedPayload) of
-                {ok, NewState, NewData} ->
-                    ok = gen_bittorrent_helper:get_packet(Socket),
-                    loop(NewState, NewData);
-                {completed, NewState, NewData0} ->
-                    Deb3 = sys:handle_debug(Deb2, fun format_event/3, ?MODULE, completed),
-                    case catch CbMod:piece_completed(PieceId, CbState) of
-                        {ok, NewCbState} ->
-                            loop(NewState, NewData0#data{cb_state = NewCbState, debug = Deb3});
-                        {'EXIT', Reason} ->
-                            terminate(NewData0#data{debug = Deb3}, Reason);
-                        {stop, Reason} ->
-                            terminate(NewData0#data{debug = Deb3}, Reason)
-                    end
-            end;
-        {tcp_closed, Port} when Port =:= Socket ->
-            terminate(Data, {socket_error, tcp_closed});
-        {'$gen_call', From, CallMsg} ->
-            Deb2 = sys:handle_debug(Deb, fun format_event/3, ?MODULE, {in, {'$gen_call', From, Msg}}),
-            case catch CbMod:handle_call(CallMsg, From, CbState) of
-                {reply, Reply, NewCbState} ->
-                    Deb3 = reply(From, Reply, CbMod, CbState, Name, Deb2),
-                    loop(State, Data#data{cb_state = NewCbState, debug = Deb3});
-                {reply, Reply, NewCbState, NewTimeout} ->
-                    Deb3 = reply(From, Reply, CbMod, CbState, Name, Deb2),
-                    loop(State, Data#data{cb_state = NewCbState, debug = Deb3, timeout = NewTimeout});
-                {stop, Reason, Reply} ->
-                    reply(From, Reply, CbMod, CbState, Name, Deb),
-                    terminate(Data#data{debug = Deb2}, Reason);
-                {'EXIT', Reason} ->
-                    terminate(Data#data{debug = Deb2}, Reason)
-            end;
-        {system, From, Request} ->
-            sys:handle_system_msg(Request, From, Parent, ?MODULE, Deb, {State, Data}, Hibernation);
-        {'$switch_piece', NewPieceId, NewPieceSize} ->
-            LastBlockId = trunc(math:ceil(NewPieceSize / RequestLength)),
-            Blocks      = lists:seq(0, LastBlockId - 1),
-            NewData0 = Data#data{
-                piece_id             = NewPieceId,
-                piece_size           = NewPieceSize,
-                blocks               = Blocks,
-                blocks_not_requested = Blocks,
-                rest_payload         = undefined
-            },
-            NewData1 = request_piece(NewData0),
-            ok = gen_bittorrent_helper:get_packet(Socket),
-            loop(State, NewData1);
-        Other ->
-            case catch CbMod:handle_info(Other, CbState) of
-                {ok, NewCbState} ->
-                    Deb2 = sys:handle_debug(Deb, fun format_event/3, ?MODULE, {in, {msg, Other}}),
-                    loop(State, Data#data{cb_state = NewCbState, debug = Deb2});
-                {stop, Reason} ->
-                    terminate(Data, Reason);
-                {'EXIT', Reason} ->
-                    terminate(Data, Reason)
-            end
+        request_length = RequestLength,
+        socket         = Socket
+    } = SD,
+    LastBlockId = trunc(math:ceil(NewPieceSize / RequestLength)),
+    Blocks      = lists:seq(0, LastBlockId - 1),
+    NewData0 = SD#data{
+        piece_id             = NewPieceId,
+        piece_size           = NewPieceSize,
+        blocks               = Blocks,
+        blocks_not_requested = Blocks,
+        rest_payload         = undefined
+    },
+    SD0 = request_piece(NewData0),
+    ok = gen_bittorrent_helper:get_packet(Socket),
+    {keep_state, SD0};
+
+%
+%
+handle_event({timeout, global}, timeout, _AnyState, _SD) ->
+    {stop, timeout};
+
+%
+%
+handle_event({call, From}, {call, Request}, _AnyState, SD = #data{cb_mod = CbMod, cb_state = CbState}) ->
+    case catch CbMod:handle_call(Request, From, CbState) of
+        {reply, Reply, NewCbState} ->
+            {keep_state, SD#data{cb_state = NewCbState}, [{reply, From, Reply}]};
+        {reply, Reply, NewCbState, NewTimeout} ->
+            {keep_state, SD#data{cb_state = NewCbState}, [{reply, From, Reply}, {{timeout, global}, NewTimeout, timeout}]};
+        {stop, Reason, Reply} ->
+            stop(Reason);
+        {'EXIT', Reason} ->
+            stop(Reason)
+    end;
+
+%
+%
+handle_event(info, tcp_closed, _AnyState, _SD) ->
+    {stop, {socket_error, tcp_closed}};
+
+%
+%
+handle_event(info, Other, _AnyState, SD = #data{cb_mod = CbMod, cb_state = CbState}) ->
+    case catch CbMod:handle_info(Other, CbState) of
+        {ok, NewCbState} ->
+            {keep_state, SD#data{cb_state = NewCbState}};
+        {stop, Reason} ->
+            stop(Reason);
+        {'EXIT', Reason} ->
+            stop(Reason)
     end.
-
-
-%%
-%%
-%%
-terminate(Data, Reason) ->
-    #data{
-        name     = Name,
-        debug    = Debug,
-        cb_state = CbState,
-        cb_mod   = CbMod
-    } = Data,
-    terminate(Name, Debug, CbMod, CbState, Reason).
-
-terminate(Name, Debug, CbMod, CbState, Reason) when CbMod =/= undefined ->
-    _ = CbMod:terminate(CbState),
-    terminate(Name, Debug, Reason);
-
-terminate(Name, Debug, _CbMod, _CbState, Reason) ->
-    terminate(Name, Debug, Reason).
-
-terminate(Name, Debug, Reason) ->
-    gen:unregister_name(Name),
-    sys:print_log(Debug),
-    exit(Reason).
-
-
-%%
-%%
-%%
-reply({To, Tag}, Reply, CbMod, CbState, Name, Debug0)  ->
-    Debug1 = sys:handle_debug(Debug0, fun format_event/3, self(), {out, Reply, To, CbState}),
-    case catch To ! {Tag, Reply} of
-        {'EXIT', Reason} -> terminate(Name, Debug1, CbMod, CbState, Reason);
-        _Other           -> Debug1
-    end.
-
-
-%%
-%%
-%%
-format_event(Dev, Event, Name) ->
-    io:format(Dev, "*DBG* ~p dbg ~p~n", [Name, Event]).
 
 
 
@@ -664,8 +605,8 @@ request_piece(Data) ->
                     Message = gen_bittorrent_message:create_pipeline_request_piece(MsgAcc, PieceIdBin, OffsetBin, PieceSizeBin),
                     NewCbStateAcc = case catch CbMod:block_requested(PieceId, OffsetBin, NextLength, CbStateAcc) of
                         {ok, NewCbState} -> NewCbState;
-                        {stop, Reason}   -> terminate(DataAcc, Reason);
-                        {'EXIT', Reason} -> terminate(DataAcc, Reason)
+                        {stop, Reason}   -> stop(Reason);
+                        {'EXIT', Reason} -> stop(Reason)
                     end,
                     {Message, DataAcc#data{cb_state = NewCbStateAcc, blocks_not_requested = BlocksNotRequestedAcc -- [NextBlockId]}}
                 end,
@@ -723,13 +664,12 @@ process_downloaded_block(ParsedPayload, Data) ->
     #data{
         cb_state        = CbState0,
         blocks          = Blocks,
-        debug           = Debug,
         request_length  = RequestLength,
         cb_mod          = CbMod
     } = Data,
-    {NewCbState, NewBlocks, NewDebug} = lists:foldl(
+    {NewCbState, NewBlocks} = lists:foldl(
         fun
-            ({piece, PD = #piece_data{}}, Acc = {AccCbState, AccBlocksLeft, AccDebug}) ->
+            ({piece, PD = #piece_data{}}, Acc = {AccCbState, AccBlocksLeft}) ->
                 #piece_data{
                     payload      = Payload,
                     block_offset = Offset,
@@ -743,12 +683,11 @@ process_downloaded_block(ParsedPayload, Data) ->
                         NewAccBlocksLeft = AccBlocksLeft -- [BlockId],
                         case catch CbMod:block_downloaded(PieceId, Payload, Offset, Length, AccCbState) of
                             {ok, NewCbState1} ->
-                                NewAccDebug = sys:handle_debug(AccDebug, fun format_event/3, ?MODULE, {in, block, BlockId}),
-                                {NewCbState1, NewAccBlocksLeft, NewAccDebug};
+                                {NewCbState1, NewAccBlocksLeft};
                             {stop, Reason} ->
-                                terminate(Data#data{cb_state = AccCbState, debug = AccDebug}, Reason);
+                                stop(Reason);
                             {'EXIT', Reason} ->
-                                terminate(Data#data{cb_state = AccCbState, debug = AccDebug}, Reason)
+                                stop(Reason)
                         end;
                     false ->
                         Acc
@@ -756,108 +695,11 @@ process_downloaded_block(ParsedPayload, Data) ->
            (_Else, Acc) ->
                Acc
         end,
-        {CbState0, Blocks, Debug},
+        {CbState0, Blocks},
         ParsedPayload
     ),
     Data#data{
         cb_state = NewCbState,
-        blocks   = NewBlocks,
-        debug    = NewDebug
+        blocks   = NewBlocks
     }.
-
-
-%%  @private
-%%  First state. Trying to handshake.
-%%
-handle_payload(State = #state{handshake = not_handshaked, leecher_state = not_interested, peer_state = choked}, Data, ParsedPayload) ->
-    #data{
-        socket    = Socket,
-        cb_mod    = CbMod,
-        cb_state  = CbState,
-        debug     = Debug0,
-        piece_id  = PieceId
-    } = Data,
-    {NewCbState, Debug1} = case proplists:get_value(handshake, ParsedPayload) of
-        true ->
-            case catch CbMod:peer_handshaked(PieceId, CbState) of
-                {ok, NewCbState0} ->
-                    gen_bittorrent_message:interested(Socket),
-                    Deb = sys:handle_debug(Debug0, fun format_event/3, ?MODULE, {in, handshake}),
-                    {NewCbState0, Deb};
-                {stop, Reason} ->
-                    terminate(Data, Reason);
-                {'EXIT', Reason} ->
-                    terminate(Data, Reason)
-            end;
-        _ ->
-            {CbState, Debug0}
-    end,
-    {ok, State#state{handshake = handshaked, leecher_state = interested}, Data#data{cb_state = NewCbState, debug = Debug1}};
-
-%%  @private
-%%  Second state. Enter interested mode. Trying to unchoke peer.
-%%
-handle_payload(State = #state{handshake = handshaked, leecher_state = interested, peer_state = choked}, Data, ParsedPayload) ->
-    #data{
-        socket    = Socket,
-        cb_mod    = CbMod,
-        debug     = Debug0,
-        piece_id  = PieceId
-    } = Data,
-    NewData0 = #data{cb_state = NewCbState0} = request_piece(Data),
-    ok = gen_bittorrent_helper:get_packet(Socket),
-    {NewPeerState, NewCbState3, Debug1} = case get_peer_new_state(ParsedPayload, choked) of
-        unchoked ->
-            NewCbState2 = case catch CbMod:peer_unchoked(PieceId, NewCbState0) of
-                {ok, NewCbState1} -> NewCbState1;
-                {stop, Reason}    -> terminate(NewData0, Reason);
-                {'EXIT', Reason}  -> terminate(NewData0, Reason)
-            end,
-            Deb = sys:handle_debug(Debug0, fun format_event/3, ?MODULE, {in, unchoked}),
-            {unchoked, NewCbState2, Deb};
-        choked ->
-            {choked, NewCbState0, Debug0}
-    end,
-    {ok, State#state{peer_state = NewPeerState}, NewData0#data{cb_state = NewCbState3, debug = Debug1}};
-
-%%  @private
-%%  Third state. Retrieve blocks from peer.
-%%
-handle_payload(State = #state{handshake = handshaked, leecher_state = interested, peer_state = unchoked}, Data, ParsedPayload) ->
-    #data{
-        cb_mod   = CbMod,
-        debug    = Debug0,
-        piece_id = PieceId,
-        blocks   = Blocks
-    } = Data,
-    NewData0 = #data{cb_state = NewCbState0} = request_piece(Data),
-    NewData1 = process_downloaded_block(ParsedPayload, Data#data{cb_state = NewCbState0, debug = Debug0}),
-    #data{cb_state = NewCbState1, blocks = NewBlocks0, debug = Debug1} = NewData1,
-    {NewPeerState, NewData2} = case get_peer_new_state(ParsedPayload, unchoked) of
-        unchoked ->
-            Debug2 = sys:handle_debug(Debug1, fun format_event/3, ?MODULE, {in, unchoked}),
-            {unchoked, NewData0#data{
-                blocks   = NewBlocks0,
-                cb_state = NewCbState1,
-                debug    = Debug2
-            }};
-        choked ->
-            NewCbState3 = case catch CbMod:peer_choked(PieceId, NewCbState1) of
-                {ok, NewCbState2} -> NewCbState2;
-                {stop, Reason}    -> terminate(NewData0, Reason);
-                {'EXIT', Reason}  -> terminate(NewData0, Reason)
-            end,
-            Debug2 = sys:handle_debug(Debug1, fun format_event/3, ?MODULE, {in, choked}),
-            {choked, NewData0#data{
-                blocks   = Blocks,
-                cb_state = NewCbState3,
-                debug    = Debug2
-            }}
-    end,
-    #data{blocks = NewBlocks} = NewData2,
-    case NewBlocks of
-        [_|_] -> {ok, State#state{handshake = handshaked, leecher_state = interested, peer_state = NewPeerState}, NewData2};
-        []    -> {completed, State, NewData2}
-    end.
-
 

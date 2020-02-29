@@ -8,19 +8,20 @@ gen_bittorrent
 
 ## <a name="introduction">Introduction</a> ##
 
-Generic gen_bittorrent behaviour implemented as OTP compliant special process FSM.
-The purpose of this behaviour is to download a torrent file piece.
+Generic `gen_bittorrent` behaviour implemented on top of OTP `gen_statem`.<br/>
+The purpose of this behaviour is to download a torrent file piece.<br/>
 It can be used as a high level transport protocol for any software.
-To avoid any unnecessary overhead, no generic behaviour was used.
-gen_bittorrent relies only on proc_lib, sys, gen modules.
 
-## <a name="status">Status</a> ##
-
-This behaviour is still experimental.
+Library also includes:
+- `gen_bittorrent_helper.erl` - helper functions for encoding and numbers converting.
+- `gen_bittorrent_message.erl` - helper functions for forming BitTorrent messages.
+- `gen_bittorrent_packet.erl` - helper functions for parsing BitTorrent messages.
 
 ## <a name="usage">Usage</a> ##
 
-Implement gen_bittorrent behaviour (ex.: examples/gen_bittorrent_impl.erl).
+Behaviour implementation example: `examples/gen_bittorrent_impl.erl`<br/>
+More complex usage example can be found: https://github.com/bartima3us/erl-bittorrent
+
 Starting with/without link and without/without name:
 
 ```
@@ -56,9 +57,6 @@ gen_bittorrent:stop(Name :: term()).
 ```
 gen_bittorrent:stop(Name :: term(), Reason :: term(), Timeout :: pos_integer()).
 ```
-
-
-More complex usage example can be found: https://github.com/bartima3us/erl-bittorrent
 
 ## <a name="tests">Tests</a> ##
 

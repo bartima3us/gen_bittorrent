@@ -31,11 +31,7 @@
     name                                                :: term(),
     cb_mod                                              :: module(),
     cb_state                                            :: term(),
-    args                                                :: [term()],
-    parent                                              :: pid(),
-    debug                                               :: [term()],
-    hibernate_timeout                                   :: timeout(),
-    timeout                 = infinity                  :: timeout()
+    args                                                :: [term()]
 }).
 
 -record(state, {

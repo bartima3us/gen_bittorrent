@@ -131,7 +131,6 @@ process_downloaded_block_test_() ->
         }}
     ],
     Data = #data{
-        debug           = sys:debug_options([]),
         blocks          = [0, 1, 2, 3],
         request_length  = 4,
         cb_mod          = gen_bittorrent_cb,
@@ -149,7 +148,7 @@ process_downloaded_block_test_() ->
         [{"Process empty downloaded and parsed piece data.",
             fun() ->
                 ?assertEqual(
-                    Data#data{cb_state = {old_cb_state}, blocks = [0,1,2,3], debug = []},
+                    Data#data{cb_state = {old_cb_state}, blocks = [0,1,2,3]},
                     gen_bittorrent:process_downloaded_block([], Data)
                 ),
                 ?assertEqual(
@@ -161,7 +160,7 @@ process_downloaded_block_test_() ->
         {"Process downloaded and parsed piece data.",
             fun() ->
                 ?assertEqual(
-                    Data#data{cb_state = {new_cb_state}, blocks = [2,3], debug = []},
+                    Data#data{cb_state = {new_cb_state}, blocks = [2,3]},
                     gen_bittorrent:process_downloaded_block(ParsedPayload, Data)
                 ),
                 ?assertEqual(
@@ -192,13 +191,14 @@ handle_payload_test_() ->
         }}
     ],
     Data = #data{
-        debug                   = sys:debug_options([]),
         blocks                  = [0, 1, 2, 3],
         blocks_not_requested    = [0, 1, 2, 3],
         request_length          = 4,
         cb_mod                  = gen_bittorrent_cb,
         cb_state                = OldCbState,
-        piece_id                = PieceId
+        piece_id                = PieceId,
+        socket                  = socket,
+        rest_payload            = <<>>
     },
     State0 = #state{handshake = not_handshaked, leecher_state = not_interested, peer_state = choked},
     State1 = #state{handshake = handshaked, leecher_state = interested, peer_state = choked},
@@ -206,25 +206,32 @@ handle_payload_test_() ->
     {setup,
         fun() ->
             ok = meck:new(gen_bittorrent_cb, [non_strict]),
-            ok = meck:new([gen_bittorrent_message, gen_bittorrent_helper], [passthrough]),
+            ok = meck:new([gen_bittorrent_message, gen_bittorrent_helper, gen_bittorrent_packet], [passthrough]),
             ok = meck:expect(gen_bittorrent_cb, peer_handshaked, fun(_, _) -> {ok, NewCbState} end),
             ok = meck:expect(gen_bittorrent_cb, peer_unchoked, fun(_, _) -> {ok, NewCbState} end),
             ok = meck:expect(gen_bittorrent_cb, peer_choked, fun(_, _) -> {ok, NewCbState} end),
             ok = meck:expect(gen_bittorrent_cb, block_requested, fun(_, _, _, _) -> {ok, NewCbState} end),
             ok = meck:expect(gen_bittorrent_cb, block_downloaded, fun(_, _, _, _, _) -> {ok, NewCbState} end),
+            ok = meck:expect(gen_bittorrent_cb, piece_completed, fun(_, _) -> {ok, NewCbState} end),
             ok = meck:expect(gen_bittorrent_message, interested, ['_'], ok),
             ok = meck:expect(gen_bittorrent_message, request_piece, ['_', '_'], ok),
-            ok = meck:expect(gen_bittorrent_helper, get_packet, ['_'], ok)
+            ok = meck:expect(gen_bittorrent_helper, get_packet, ['_'], ok),
+            ok = meck:expect(gen_bittorrent_packet, parse, fun
+                (<<"packet1">>, _) -> {ok, [{handshake, true}], <<>>};
+                (<<"packet2">>, _) -> {ok, [{unchoke, true}], <<>>};
+                (<<"packet3">>, _) -> {ok, ParsedPayload, <<>>};
+                (<<"packet4">>, _) -> {ok, [{choke, true}], <<>>}
+            end)
         end,
         fun(_) ->
-            true = meck:validate([gen_bittorrent_cb, gen_bittorrent_message, gen_bittorrent_helper]),
-            ok = meck:unload([gen_bittorrent_cb, gen_bittorrent_message, gen_bittorrent_helper])
+            true = meck:validate([gen_bittorrent_cb, gen_bittorrent_message, gen_bittorrent_helper, gen_bittorrent_packet]),
+            ok = meck:unload([gen_bittorrent_cb, gen_bittorrent_message, gen_bittorrent_helper, gen_bittorrent_packet])
         end,
         [{"Handle first state. Not handshaked, not interested, choked.",
             fun() ->
                 ?assertEqual(
-                    {ok, State1, Data#data{cb_state = NewCbState}},
-                    gen_bittorrent:handle_payload(State0, Data, [{handshake, true}])
+                    {next_state, State1, Data#data{cb_state = NewCbState}},
+                    gen_bittorrent:handle_event(info, {tcp, socket, <<"packet1">>}, State0, Data)
                 ),
                 ?assertEqual(
                     1,
@@ -233,14 +240,18 @@ handle_payload_test_() ->
                 ?assertEqual(
                     0,
                     meck:num_calls(gen_bittorrent_cb, block_requested, [PieceId, '_', '_', '_'])
+                ),
+                ?assertEqual(
+                    1,
+                    meck:num_calls(gen_bittorrent_packet, parse, ['_', '_'])
                 )
             end
         },
         {"Handle second state. Handshaked, interested, choked.",
             fun() ->
                 ?assertEqual(
-                    {ok, State2, Data#data{cb_state = NewCbState, blocks_not_requested = []}},
-                    gen_bittorrent:handle_payload(State1, Data, [{unchoke, true}])
+                    {next_state, State2, Data#data{cb_state = NewCbState, blocks_not_requested = []}},
+                    gen_bittorrent:handle_event(info, {tcp, socket, <<"packet2">>}, State1, Data)
                 ),
                 ?assertEqual(
                     1,
@@ -249,14 +260,18 @@ handle_payload_test_() ->
                 ?assertEqual(
                     4,
                     meck:num_calls(gen_bittorrent_cb, block_requested, [PieceId, '_', '_', '_'])
+                ),
+                ?assertEqual(
+                    2,
+                    meck:num_calls(gen_bittorrent_packet, parse, ['_', '_'])
                 )
             end
         },
         {"Handle third state. Handshaked, interested, unchoked. Download block.",
             fun() ->
                 ?assertEqual(
-                    {ok, State2, Data#data{cb_state = NewCbState, blocks_not_requested = [], blocks = [2, 3]}},
-                    gen_bittorrent:handle_payload(State2, Data, ParsedPayload)
+                    {next_state, State2, Data#data{cb_state = NewCbState, blocks_not_requested = [], blocks = [2, 3]}},
+                    gen_bittorrent:handle_event(info, {tcp, socket, <<"packet3">>}, State2, Data)
                 ),
                 ?assertEqual(
                     0,
@@ -269,14 +284,18 @@ handle_payload_test_() ->
                 ?assertEqual(
                     8,
                     meck:num_calls(gen_bittorrent_cb, block_requested, [PieceId, '_', '_', '_'])
+                ),
+                ?assertEqual(
+                    3,
+                    meck:num_calls(gen_bittorrent_packet, parse, ['_', '_'])
                 )
             end
         },
         {"Handle third state. Handshaked, interested, unchoked. Get choke.",
             fun() ->
                 ?assertEqual(
-                    {ok, State1, Data#data{cb_state = NewCbState, blocks_not_requested = []}},
-                    gen_bittorrent:handle_payload(State2, Data, [{choke, true}])
+                    {next_state, State1, Data#data{cb_state = NewCbState, blocks_not_requested = []}},
+                    gen_bittorrent:handle_event(info, {tcp, socket, <<"packet4">>}, State2, Data)
                 ),
                 ?assertEqual(
                     1,
@@ -289,14 +308,18 @@ handle_payload_test_() ->
                 ?assertEqual(
                     12,
                     meck:num_calls(gen_bittorrent_cb, block_requested, [PieceId, '_', '_', '_'])
+                ),
+                ?assertEqual(
+                    4,
+                    meck:num_calls(gen_bittorrent_packet, parse, ['_', '_'])
                 )
             end
         },
         {"Handle third state. Handshaked, interested, unchoked. Complete piece.",
             fun() ->
                 ?assertEqual(
-                    {completed, State2, Data#data{cb_state = NewCbState, blocks_not_requested = [], blocks = []}},
-                    gen_bittorrent:handle_payload(State2, Data#data{blocks_not_requested = [], blocks = [0, 1]}, ParsedPayload)
+                    {next_state, State2, Data#data{cb_state = NewCbState, blocks_not_requested = [], blocks = []}},
+                    gen_bittorrent:handle_event(info, {tcp, socket, <<"packet3">>}, State2, Data#data{blocks_not_requested = [], blocks = [0, 1]})
                 ),
                 ?assertEqual(
                     1,
@@ -309,14 +332,22 @@ handle_payload_test_() ->
                 ?assertEqual(
                     12,
                     meck:num_calls(gen_bittorrent_cb, block_requested, [PieceId, '_', '_', '_'])
+                ),
+                ?assertEqual(
+                    1,
+                    meck:num_calls(gen_bittorrent_cb, piece_completed, ['_', '_'])
+                ),
+                ?assertEqual(
+                    5,
+                    meck:num_calls(gen_bittorrent_packet, parse, ['_', '_'])
                 )
             end
         },
         {"Handle third state. Handshaked, interested, unchoked. Get choke. Don't request if all pieces are requested.",
             fun() ->
                 ?assertEqual(
-                    {ok, State1, Data#data{cb_state = NewCbState, blocks_not_requested = []}},
-                    gen_bittorrent:handle_payload(State2, Data#data{blocks_not_requested = []}, [{choke, true}])
+                    {next_state, State1, Data#data{cb_state = NewCbState, blocks_not_requested = []}},
+                    gen_bittorrent:handle_event(info, {tcp, socket, <<"packet4">>}, State2, Data#data{blocks_not_requested = []})
                 ),
                 ?assertEqual(
                     12,
