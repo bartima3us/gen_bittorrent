@@ -531,7 +531,7 @@ handle_event({call, From}, {call, Request}, _AnyState, SD = #data{cb_mod = CbMod
             {keep_state, SD#data{cb_state = NewCbState}, [{reply, From, Reply}]};
         {reply, Reply, NewCbState, NewTimeout} ->
             {keep_state, SD#data{cb_state = NewCbState}, [{reply, From, Reply}, {{timeout, global}, NewTimeout, timeout}]};
-        {stop, Reason, Reply} ->
+        {stop, Reason, _Reply} ->
             stop(Reason);
         {'EXIT', Reason} ->
             stop(Reason)
