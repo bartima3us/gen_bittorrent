@@ -11,6 +11,8 @@
 -define(DEFAULT_REQUEST_LENGTH, 16384).
 -define(DEFAULT_PROTOCOL, tcp).
 -define(DEFAULT_CONNECT_TIMEOUT, 10000).
+-define(DEFAULT_RETRIES, 3).
+-define(RETRY_TIMEOUT, 3000).
 
 -record(data, {
     % BitTorrent specific fields
@@ -27,6 +29,7 @@
     protocol                = ?DEFAULT_PROTOCOL         :: tcp | udp,
     peer_id                                             :: string(),
     request_length          = ?DEFAULT_REQUEST_LENGTH   :: pos_integer(), % 16 kb
+    retries                 = ?DEFAULT_RETRIES          :: non_neg_integer(),
     % Process specific fields
     name                                                :: term(),
     cb_mod                                              :: module(),

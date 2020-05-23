@@ -318,7 +318,7 @@ handle_payload_test_() ->
         {"Handle third state. Handshaked, interested, unchoked. Complete piece.",
             fun() ->
                 ?assertEqual(
-                    {next_state, State2, Data#data{cb_state = NewCbState, blocks_not_requested = [], blocks = []}},
+                    {next_state, State2, Data#data{cb_state = NewCbState, blocks_not_requested = [], blocks = []}, 3000},
                     gen_bittorrent:handle_event(info, {tcp, socket, <<"packet3">>}, State2, Data#data{blocks_not_requested = [], blocks = [0, 1]})
                 ),
                 ?assertEqual(

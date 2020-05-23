@@ -400,6 +400,22 @@ callback_mode() ->
 %%%===================================================================
 
 %--------------------------------------------------------------------
+%   Repeat piece request on timeout.
+%
+handle_event(
+    timeout,
+    _Content,
+    _State,
+    SD = #data{retries = CurrRetries, blocks = Blocks}
+) ->
+    SD0 = request_piece(SD#data{blocks_not_requested = Blocks}),
+    NextState = #state{handshake = handshaked, leecher_state = interested, peer_state = unchoked},
+    case CurrRetries > 0 of
+        true  -> {next_state, NextState, SD0#data{retries = CurrRetries - 1}, ?RETRY_TIMEOUT};
+        false -> {next_state, NextState, SD0}
+    end;
+
+%--------------------------------------------------------------------
 %   First state. Trying to handshake.
 %
 handle_event(
@@ -458,7 +474,7 @@ handle_event(
     info,
     {tcp, Port, Packet},
     State = #state{handshake = handshaked, leecher_state = interested, peer_state = unchoked},
-    SD = #data{socket = Socket, cb_mod = CbMod, cb_state = CbState, piece_id = PieceId, rest_payload = CurrRestPayload, blocks = Blocks}
+    SD = #data{socket = Socket, cb_mod = CbMod, cb_state = CbState, piece_id = PieceId, rest_payload = CurrRestPayload, blocks = Blocks, retries = Retries}
 ) when Port =:= Socket ->
     SD0 = #data{cb_state = NewCbState0} = request_piece(SD),
     {ok, ParsedPayload, NewRestPayload} = gen_bittorrent_packet:parse(Packet, CurrRestPayload),
@@ -489,7 +505,12 @@ handle_event(
         []    ->
             case catch CbMod:piece_completed(PieceId, CbState) of
                 {ok, NewCbState} ->
-                    {next_state, State#state{peer_state = NewPeerState}, SD2#data{cb_state = NewCbState, rest_payload = NewRestPayload}};
+                    NewState = State#state{peer_state = NewPeerState},
+                    NewSD = SD2#data{cb_state = NewCbState, rest_payload = NewRestPayload},
+                    case Retries > 0 of
+                        true  -> {next_state, NewState, NewSD, ?RETRY_TIMEOUT};
+                        false -> {next_state, NewState, NewSD}
+                    end;
                 {'EXIT', Reason1} ->
                     stop(Reason1);
                 {stop, Reason1} ->
@@ -662,10 +683,10 @@ get_param(connect_timeout, Opts) -> proplists:get_value(connect_timeout, Opts, ?
 %%
 process_downloaded_block(ParsedPayload, Data) ->
     #data{
-        cb_state        = CbState0,
-        blocks          = Blocks,
-        request_length  = RequestLength,
-        cb_mod          = CbMod
+        cb_state                = CbState0,
+        blocks                  = Blocks,
+        request_length          = RequestLength,
+        cb_mod                  = CbMod
     } = Data,
     {NewCbState, NewBlocks} = lists:foldl(
         fun
@@ -700,6 +721,7 @@ process_downloaded_block(ParsedPayload, Data) ->
     ),
     Data#data{
         cb_state = NewCbState,
-        blocks   = NewBlocks
+        blocks   = NewBlocks,
+        retries  = ?DEFAULT_RETRIES
     }.
 

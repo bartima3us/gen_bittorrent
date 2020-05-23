@@ -12,9 +12,9 @@
 %% API
 -export([
     urlencode/1,
-    get_packet/1,
     bin32_to_int/1,
-    int_to_bin32/1
+    int_to_bin32/1,
+    get_packet/1
 ]).
 
 
