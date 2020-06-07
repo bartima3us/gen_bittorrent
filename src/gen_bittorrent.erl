@@ -407,10 +407,11 @@ handle_event({{timeout, global}, timeout}, _Content, _State, _SD) ->
 
 %--------------------------------------------------------------------
 %   Repeat piece request on timeout.
+%   This timeout timer is canceled when new message arrives.
 %
 handle_event(
     timeout,
-    _Content,
+    _Content, % This is timeout integer, for example: 3000
     _State,
     SD = #data{retries = CurrRetries, blocks = Blocks}
 ) ->
