@@ -407,7 +407,7 @@ handle_event({{timeout, global}, timeout}, _Content, _State, _SD) ->
 
 %--------------------------------------------------------------------
 %   Repeat piece request on timeout.
-%   This timeout timer is canceled when new message arrives.
+%   Timeout timer is renewed until new message arrives but no more than `retries` times.
 %
 handle_event(
     timeout,
