@@ -400,6 +400,12 @@ callback_mode() ->
 %%%===================================================================
 
 %--------------------------------------------------------------------
+%   Global process timeout.
+%
+handle_event({{timeout, global}, timeout}, _Content, _State, _SD) ->
+    {stop, timeout};
+
+%--------------------------------------------------------------------
 %   Repeat piece request on timeout.
 %
 handle_event(
@@ -474,7 +480,7 @@ handle_event(
     info,
     {tcp, Port, Packet},
     State = #state{handshake = handshaked, leecher_state = interested, peer_state = unchoked},
-    SD = #data{socket = Socket, cb_mod = CbMod, cb_state = CbState, piece_id = PieceId, rest_payload = CurrRestPayload, blocks = Blocks, retries = Retries}
+    SD = #data{socket = Socket, cb_mod = CbMod, cb_state = CbState, piece_id = PieceId, rest_payload = CurrRestPayload, blocks = Blocks}
 ) when Port =:= Socket ->
     SD0 = #data{cb_state = NewCbState0} = request_piece(SD),
     {ok, ParsedPayload, NewRestPayload} = gen_bittorrent_packet:parse(Packet, CurrRestPayload),
@@ -498,7 +504,7 @@ handle_event(
                 cb_state = NewCbState3
             }}
     end,
-    #data{blocks = NewBlocks} = SD2,
+    #data{blocks = NewBlocks, retries = Retries} = SD2,
     case NewBlocks of
         [_|_] ->
             {next_state, State#state{peer_state = NewPeerState}, SD2#data{rest_payload = NewRestPayload}};
