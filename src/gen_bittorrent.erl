@@ -530,7 +530,15 @@ handle_event(
 %   All state events
 %
 handle_event(cast, {switch_piece, NewPieceId, NewPieceSize}, _AnyState, SD) ->
-    #data{request_length = RequestLength} = SD,
+    #data{
+        request_length  = RequestLength,
+        socket          = Socket,
+        peer_ip         = PeerIp,
+        peer_port       = PeerPort,
+        connect_timeout = ConnectTimeout,
+        peer_id         = PeerId,
+        torrent_hash    = TorrentHash
+    } = SD,
     LastBlockId = trunc(math:ceil(NewPieceSize / RequestLength)),
     Blocks      = lists:seq(0, LastBlockId - 1),
     NewData0 = SD#data{
@@ -540,9 +548,24 @@ handle_event(cast, {switch_piece, NewPieceId, NewPieceSize}, _AnyState, SD) ->
         blocks_not_requested = Blocks,
         rest_payload         = undefined
     },
-    RequestFun = fun (RqSD) -> request_piece(RqSD) end,
-    SD0 = do_request_with_retry(RequestFun, NewData0),
-    {keep_state, SD0};
+    NewData1 = request_piece(NewData0),
+    case gen_bittorrent_helper:get_packet(Socket) of
+        ok ->
+            {keep_state, NewData1};
+        {error, _Reason} ->
+            case do_connect(PeerIp, PeerPort, ConnectTimeout) of
+                {ok, NewSocket} ->
+                    ok = gen_bittorrent_message:handshake(NewSocket, PeerId, TorrentHash),
+                    NextState = #state{handshake = not_handshaked, leecher_state = not_interested, peer_state = choked},
+                    case gen_bittorrent_helper:get_packet(NewSocket) of
+                        % In case of request_piece wasn't successful, we should use NewData0 (with all blocks).
+                        ok -> {next_state, NextState, NewData0#data{socket = NewSocket}};
+                        {error, Reason} -> stop(Reason)
+                    end;
+                {error, Reason} ->
+                    stop(Reason)
+            end
+    end;
 
 %
 %
@@ -729,33 +752,3 @@ process_downloaded_block(ParsedPayload, Data) ->
         blocks   = NewBlocks,
         retries  = ?DEFAULT_RETRIES
     }.
-
-
-%%  @private
-%%  Process downloaded block.
-%%
-do_request_with_retry(RequestFun, StateData) ->
-    #data{
-        socket          = Socket,
-        peer_ip         = PeerIp,
-        peer_port       = PeerPort,
-        connect_timeout = ConnectTimeout
-    } = StateData,
-    NewStateData0 = RequestFun(StateData),
-    case gen_bittorrent_helper:get_packet(Socket) of
-        ok ->
-            NewStateData0;
-        {error, _Reason} ->
-            case do_connect(PeerIp, PeerPort, ConnectTimeout) of
-                {ok, NewSocket} ->
-                    NewStateData1 = NewStateData0#data{socket = NewSocket},
-                    NewStateData2 = RequestFun(NewStateData1),
-                    case gen_bittorrent_helper:get_packet(NewSocket) of
-                        ok -> NewStateData2;
-                        {error, Reason} -> stop(Reason)
-                    end;
-                {error, Reason} ->
-                    stop(Reason)
-            end
-    end.
-
