@@ -16,6 +16,7 @@ Library also includes:
 - `gen_bittorrent_helper.erl` - helper functions for encoding and numbers converting.
 - `gen_bittorrent_message.erl` - helper functions for forming BitTorrent messages.
 - `gen_bittorrent_packet.erl` - helper functions for parsing BitTorrent messages.
+- `gen_bittorrent_bencoding.erl` - Bencode parser.
 
 ## <a name="usage">Usage</a> ##
 
