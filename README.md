@@ -9,7 +9,8 @@ gen_bittorrent
 
 Generic `gen_bittorrent` behaviour implemented on top of OTP `gen_statem`.<br/>
 The purpose of this behaviour is to download a torrent file piece.<br/>
-It can be used as a high level transport protocol for any software.
+It can be used as a transfer protocol for any software.<br/>
+Supports all standard (BEP003) and extended (BEP0010) messages.
 
 Library also includes:
 - `gen_bittorrent_helper.erl` - helper functions for encoding and numbers converting.

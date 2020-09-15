@@ -154,6 +154,19 @@ identify(FullData = <<Length:4/bytes, 7, PieceIndex:4/bytes, BlockOffset:4/bytes
             identify(Rest, [{piece, Piece} | Acc])
     end;
 
+%
+% Extended
+identify(FullData = <<Length:4/bytes, 20, Data/bytes>>, Acc) ->
+    <<FullLength:32>> = Length,     % Convert to integer (same as: <<FullLength:32/integer>> = Length)
+    PayloadLength = FullLength - 1, % Because we've already matched Idx=20
+    case Data of
+        Data when byte_size(Data) < PayloadLength ->
+            {ok, lists:reverse(Acc), FullData};
+        Data ->
+            <<Payload:PayloadLength/binary, Rest/binary>> = Data,
+            identify(Rest, [{extended, gen_bittorrent_bencoding:decode(Payload)} | Acc])
+    end;
+
 identify(Data, Acc) ->
     {ok, lists:reverse(Acc), Data}.
 
