@@ -74,7 +74,7 @@ identify(<<0, 0, 0, 1, 0, Rest/bytes>>, Acc) ->
     identify(Rest, [{choke, true} | Acc]);
 
 %
-% Uncoke
+% Unchoke
 identify(<<0, 0, 0, 1, 1, Rest/bytes>>, Acc) ->
     identify(Rest, [{unchoke, true} | Acc]);
 

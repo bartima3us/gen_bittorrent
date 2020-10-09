@@ -4,7 +4,7 @@
 %%% @doc
 %%% Generic gen_bittorrent behaviour implemented as OTP behaviour.
 %%% The purpose of this behaviour is to download a piece.
-%%% It can be used as a high level transport protocol for any software.
+%%% It can be used as a transfer protocol for any software.
 %%% gen_bittorrent relies on gen_statem behaviour.
 %%% Implementation example can be found: https://github.com/bartima3us/erl-bittorrent
 %%% @end
