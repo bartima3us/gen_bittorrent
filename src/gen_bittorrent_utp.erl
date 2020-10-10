@@ -44,6 +44,7 @@
     ip                          :: inet:ip_address(),
     port                        :: inet:port_number(),
     socket                      :: port(),
+    payload         = <<>>      :: binary(),
     conn_id_recv                :: binary(), % rand()
     conn_id_send                :: binary(), % conn_id_recv + 1
     wnd_size                    :: binary(),
@@ -68,7 +69,7 @@
     {error, Error :: term()}.
 
 start_link(PeerIp, PeerPort, Parent) ->
-    gen_statem:start_link(?MODULE, [PeerIp, PeerPort, Parent, undefined], []).
+    gen_statem:start_link(?MODULE, [PeerIp, PeerPort, Parent, 0], []).
 
 
 %%  @doc
@@ -121,15 +122,9 @@ stop(Pid) ->
 %%
 init([PeerIp, PeerPort, Parent, LocalPort]) ->
     SocketParams = [binary, {active, true}],
-    OpenSocketFun = fun (Port) ->
-        case gen_udp:open(Port, SocketParams) of
-            {ok, SockPort}      -> {ok, SockPort};
-            {error, eaddrinuse} -> gen_udp:open(0, SocketParams)
-        end
-    end,
-    {ok, Socket} = case LocalPort of
-        undefined -> OpenSocketFun(0);
-        PortArg   -> OpenSocketFun(PortArg)
+    {ok, Socket} = case gen_udp:open(LocalPort, SocketParams) of
+        {ok, SockPort}      -> {ok, SockPort};
+        {error, eaddrinuse} -> gen_udp:open(0, SocketParams)
     end,
     State = #state{
         parent  = Parent,
@@ -161,7 +156,7 @@ handle_event(internal, start, init, SD) ->
 %   CS_SYN_SENT state
 %
 handle_event(info, {udp, _Port, _DstIp, _DstPort, _Message}, cs_syn_sent, SD) ->
-    {next_state, cs_syn_sent, SD#state{}};
+    {next_state, cs_connected, SD#state{}};
 
 %--------------------------------------------------------------------
 %   CS_CONNECTED state
