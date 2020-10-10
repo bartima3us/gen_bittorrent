@@ -13,7 +13,9 @@
 
 %% API
 -export([
-    start_link/0,
+    start_link/3,
+    start_link/4,
+    get_local_port/1,
     stop/1
 ]).
 
@@ -30,17 +32,22 @@
 -define(ST_RESET, 3).
 -define(ST_SYN, 4).
 
--define(EXTENSION, <<"00">>).
+-define(EXTENSION, <<0,0>>).
+
+-define(VERSION, 1).
+
+-define(DEFAULT_WND_SIZE, <<0,0,0,0,0,0,0,0>>).
 
 -record(state, {
-    active          = false :: false | once,
-    ip,
-    port,
-    socket,
-    conn_id_recv, % rand()
-    conn_id_send, % conn_id_send = conn_id_recv + 1
-    wnd_size,
-    last_ack_nr
+    active          = false     :: false | once,
+    parent                      :: pid(),   % Start of this process
+    ip                          :: inet:ip_address(),
+    port                        :: inet:port_number(),
+    socket                      :: port(),
+    conn_id_recv                :: binary(), % rand()
+    conn_id_send                :: binary(), % conn_id_recv + 1
+    wnd_size                    :: binary(),
+    last_ack_nr                 :: binary()
 }).
 
 
@@ -50,19 +57,52 @@
 
 %%  @doc
 %%  Starts the server.
-%%
--spec start_link() ->
+%%  @end
+-spec start_link(
+    PeerIp   :: inet:ip_address(),
+    PeerPort :: inet:port_number(),
+    Parent   :: pid()
+) ->
     {ok, Pid :: pid()} |
     ignore |
     {error, Error :: term()}.
 
-start_link() ->
-    gen_statem:start_link(?MODULE, [], []).
+start_link(PeerIp, PeerPort, Parent) ->
+    gen_statem:start_link(?MODULE, [PeerIp, PeerPort, Parent, undefined], []).
+
+
+%%  @doc
+%%  Starts the server.
+%%  @end
+-spec start_link(
+    PeerIp      :: inet:ip_address(),
+    PeerPort    :: inet:port_number(),
+    Parent      :: pid(),
+    LocalPort   :: inet:port_number()
+) ->
+    {ok, Pid :: pid()} |
+    ignore |
+    {error, Error :: term()}.
+
+start_link(PeerIp, PeerPort, Parent, LocalPort) ->
+    gen_statem:start_link(?MODULE, [PeerIp, PeerPort, Parent, LocalPort], []).
+
+
+%%  @doc
+%%  Get local socket port.
+%%  @end
+-spec get_local_port(
+    Pid :: pid()
+) ->
+    {ok, Port :: inet:port_number()}.
+
+get_local_port(Pid) ->
+    gen_statem:call(Pid, get_port).
 
 
 %%  @doc
 %%  Stops the client.
-%%
+%%  @end
 -spec stop(
     Pid :: pid()
 ) ->
@@ -79,9 +119,25 @@ stop(Pid) ->
 %%
 %%
 %%
-init([]) ->
-    State = #state{},
-    {ok, waiting, State, [{next_event, internal, start}]}.
+init([PeerIp, PeerPort, Parent, LocalPort]) ->
+    SocketParams = [binary, {active, true}],
+    OpenSocketFun = fun (Port) ->
+        case gen_udp:open(Port, SocketParams) of
+            {ok, SockPort}      -> {ok, SockPort};
+            {error, eaddrinuse} -> gen_udp:open(0, SocketParams)
+        end
+    end,
+    {ok, Socket} = case LocalPort of
+        undefined -> OpenSocketFun(0);
+        PortArg   -> OpenSocketFun(PortArg)
+    end,
+    State = #state{
+        parent  = Parent,
+        ip      = PeerIp,
+        port    = PeerPort,
+        socket  = Socket
+    },
+    {ok, init, State, [{next_event, internal, start}]}.
 
 
 %%
@@ -111,7 +167,15 @@ handle_event(info, {udp, _Port, _DstIp, _DstPort, _Message}, cs_syn_sent, SD) ->
 %   CS_CONNECTED state
 %
 handle_event(info, {udp, _Port, _DstIp, _DstPort, _Message}, cs_connected, _SD) ->
-    keep_state_and_data.
+    keep_state_and_data;
+
+%--------------------------------------------------------------------
+%   Any state
+%
+handle_event({call, From}, get_port, _, #state{socket = Socket}) ->
+    {ok, LocalPort} = inet:port(Socket),
+    {keep_state_and_data, [{reply, From, {ok, LocalPort}}]}.
+
 
 %%%===================================================================
 %%% Internal functions

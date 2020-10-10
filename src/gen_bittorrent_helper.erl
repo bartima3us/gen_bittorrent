@@ -2,7 +2,7 @@
 %%% @author bartimaeus
 %%% @copyright (C) 2017, sarunas.bartusevicius@gmail.com
 %%% @doc
-%%%
+%%% BitTorrent helper functions.
 %%% @end
 %%% Created : 01. Jun 2017 15.59
 %%%-------------------------------------------------------------------
@@ -25,30 +25,30 @@
 %% @doc
 %% PHP urlencode style function
 %%
-%% 432D7D1A 0B153F3F 5CE1B453 C367A5B5 5DF453E9
-%% C-%7D%1A%0B%15%3F%3F%5C%E1%B4S%C3g%A5%B5%5D%F4S%E9
-%% C - %7D %1A %0B %15 %3F %3F %5C %E1 %B4 S %C3 g %A5 %B5 %5D %F4 S %E9
-%% C   - 67     C
-%% -   - 45     -
-%% }   - 125    %
-%% SUB - 26     %
-%% VT  - 11     %
-%% NAK - 21     %
-%% ?   - 63     %
-%% ?   - 63     %
-%% \   - 92     %
-%% ß   - 225    %
-%% ┤   - 180    %
-%% S   - 83     S
-%% ├   - 195    %
-%% g   - 103    g
-%% Ñ   - 165    %
-%% Á   - 181    %
-%% ]   - 93     %
-%% ¶   - 244    %
-%% S   - 83     S
-%% Ú   - 233    %
-%%
+%%  432D7D1A 0B153F3F 5CE1B453 C367A5B5 5DF453E9
+%%  C-%7D%1A%0B%15%3F%3F%5C%E1%B4S%C3g%A5%B5%5D%F4S%E9
+%%  C - %7D %1A %0B %15 %3F %3F %5C %E1 %B4 S %C3 g %A5 %B5 %5D %F4 S %E9
+%%  C   - 67     C
+%%  -   - 45     -
+%%  }   - 125    %
+%%  SUB - 26     %
+%%  VT  - 11     %
+%%  NAK - 21     %
+%%  ?   - 63     %
+%%  ?   - 63     %
+%%  \   - 92     %
+%%  ß   - 225    %
+%%  ┤   - 180    %
+%%  S   - 83     S
+%%  ├   - 195    %
+%%  g   - 103    g
+%%  Ñ   - 165    %
+%%  Á   - 181    %
+%%  ]   - 93     %
+%%  ¶   - 244    %
+%%  S   - 83     S
+%%  Ú   - 233    %
+%%  @end
 urlencode(String) ->
     Value = case is_binary(String) of
     true -> binary_to_list(String);
@@ -71,9 +71,9 @@ urlencode(String) ->
     lists:map(Parse, Value).
 
 
-%% @doc
-%% Convert from 32 bits binary to integer
-%%
+%%  @doc
+%%  Convert from 32 bits binary to integer
+%%  @end
 bin32_to_int(Bin) when is_binary(Bin) ->
     <<Int:32>> = Bin,
     Int.
@@ -85,10 +85,19 @@ int_to_bin32(Int) when is_integer(Int) ->
     <<Int:32>>.
 
 
-%% @doc
-%% Make socket active once
-%%
+%%  @doc
+%%  Make socket active once
+%%  @end
 get_packet(Socket) ->
     inet:setopts(Socket, [{active, once}]).
 
 
+%%  @doc
+%%  Generate random binary of the specified length.
+%%  @end
+-spec generate_random_binary(
+    Length :: non_neg_integer()
+) -> binary().
+
+generate_random_binary(Length) ->
+    crypto:strong_rand_bytes(Length).
