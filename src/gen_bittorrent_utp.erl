@@ -26,15 +26,21 @@
     handle_event/4
 ]).
 
--define(ST_DATA, 0).
--define(ST_FIN, 1).
--define(ST_STATE, 2).
--define(ST_RESET, 3).
--define(ST_SYN, 4).
+-ifdef(TEST).
+-export([
+    st_syn/1
+]).
+-endif.
+
+-define(ST_DATA, <<0>>).
+-define(ST_FIN, <<1>>).
+-define(ST_STATE, <<2>>).
+-define(ST_RESET, <<3>>).
+-define(ST_SYN, <<4>>).
 
 -define(EXTENSION, <<0,0>>).
 
--define(VERSION, 1).
+-define(VERSION, <<1>>).
 
 -define(DEFAULT_WND_SIZE, <<0,0,0,0,0,0,0,0>>).
 
@@ -127,10 +133,11 @@ init([PeerIp, PeerPort, Parent, LocalPort]) ->
         {error, eaddrinuse} -> gen_udp:open(0, SocketParams)
     end,
     State = #state{
-        parent  = Parent,
-        ip      = PeerIp,
-        port    = PeerPort,
-        socket  = Socket
+        parent       = Parent,
+        ip           = PeerIp,
+        port         = PeerPort,
+        socket       = Socket,
+        conn_id_send = gen_bittorrent_helper:generate_random_binary(4)
     },
     {ok, init, State, [{next_event, internal, start}]}.
 
@@ -150,6 +157,7 @@ callback_mode() ->
 %   Init state
 %
 handle_event(internal, start, init, SD) ->
+
     {next_state, cs_syn_sent, SD#state{}};
 
 %--------------------------------------------------------------------
@@ -171,6 +179,20 @@ handle_event({call, From}, get_port, _, #state{socket = Socket}) ->
     {ok, LocalPort} = inet:port(Socket),
     {keep_state_and_data, [{reply, From, {ok, LocalPort}}]}.
 
+
+%%%===================================================================
+%%% Messages
+%%%===================================================================
+
+st_syn(#state{conn_id_send = ConnIdSend}) ->
+    <<?ST_SYN/binary,
+    ?VERSION/binary,
+    ?EXTENSION/binary,
+    ConnIdSend/binary,
+    (gen_bittorrent_helper:get_timestamp_microseconds())/binary,
+    0,0,0,0,0,0,0,0,
+    0,0,0,1,
+    0,0,0,0>>.
 
 %%%===================================================================
 %%% Internal functions

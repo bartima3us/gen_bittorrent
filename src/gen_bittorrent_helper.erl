@@ -14,7 +14,9 @@
     urlencode/1,
     bin32_to_int/1,
     int_to_bin32/1,
-    get_packet/1
+    get_packet/1,
+    generate_random_binary/1,
+    get_timestamp_microseconds/0
 ]).
 
 
@@ -22,8 +24,8 @@
 %%% API
 %%%===================================================================
 
-%% @doc
-%% PHP urlencode style function
+%%  @doc
+%%  PHP urlencode style function
 %%
 %%  432D7D1A 0B153F3F 5CE1B453 C367A5B5 5DF453E9
 %%  C-%7D%1A%0B%15%3F%3F%5C%E1%B4S%C3g%A5%B5%5D%F4S%E9
@@ -93,7 +95,7 @@ get_packet(Socket) ->
 
 
 %%  @doc
-%%  Generate random binary of the specified length.
+%%  Generate random binary of the specified length in bytes.
 %%  @end
 -spec generate_random_binary(
     Length :: non_neg_integer()
@@ -101,3 +103,11 @@ get_packet(Socket) ->
 
 generate_random_binary(Length) ->
     crypto:strong_rand_bytes(Length).
+
+
+%%  @doc
+%%  Get last 4 bytes of timestamp in microseconds.
+%%  @end
+get_timestamp_microseconds() ->
+    <<_:4/binary, TS/binary>> = <<(os:system_time()):64>>,
+    TS.
