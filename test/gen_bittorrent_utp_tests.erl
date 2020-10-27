@@ -20,6 +20,7 @@
 
 -record(state, {
     active          = false     :: false | once,
+    type                        :: sender | receiver,
     parent                      :: pid(),   % Start of this process
     ip                          :: inet:ip_address(),
     port                        :: inet:port_number(),
@@ -28,6 +29,7 @@
     conn_id_recv                :: binary(), % rand()
     conn_id_send                :: binary(), % conn_id_recv + 1
     wnd_size                    :: binary(),
+    seq_nr                      :: binary(),
     last_ack_nr                 :: binary()
 }).
 
@@ -52,7 +54,8 @@ do_error_response_test_() ->
         [{"SYN packet.",
             fun() ->
                 State = #state{
-                    conn_id_send = <<0,0,0,1>>
+                    conn_id_send = <<0,0,0,1>>,
+                    seq_nr       = <<123,11,0,0>>
                 },
                 ?assertEqual(
                     <<4,
@@ -61,7 +64,7 @@ do_error_response_test_() ->
                     0,0,0,1,
                     45,31,111,7,
                     0,0,0,0,0,0,0,0,
-                    0,0,0,1,
+                    123,11,0,0,
                     0,0,0,0>>,
                     gen_bittorrent_utp:st_syn(State)
                 )

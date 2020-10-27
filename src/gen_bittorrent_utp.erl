@@ -13,8 +13,8 @@
 
 %% API
 -export([
-    start_link/3,
     start_link/4,
+    start_link/5,
     get_local_port/1,
     stop/1
 ]).
@@ -46,14 +46,16 @@
 
 -record(state, {
     active          = false     :: false | once,
+    type                        :: sender | receiver,
     parent                      :: pid(),   % Start of this process
     ip                          :: inet:ip_address(),
     port                        :: inet:port_number(),
     socket                      :: port(),
-    payload         = <<>>      :: binary(),
+    payload         = <<>>      :: binary(), % collected payload
     conn_id_recv                :: binary(), % rand()
     conn_id_send                :: binary(), % conn_id_recv + 1
     wnd_size                    :: binary(),
+    seq_nr                      :: binary(),
     last_ack_nr                 :: binary()
 }).
 
@@ -66,33 +68,35 @@
 %%  Starts the server.
 %%  @end
 -spec start_link(
-    PeerIp   :: inet:ip_address(),
-    PeerPort :: inet:port_number(),
-    Parent   :: pid()
+    PeerIp          :: inet:ip_address(),
+    PeerPort        :: inet:port_number(),
+    Parent          :: pid(),
+    SeederOrLeecher :: seeder | leecher
 ) ->
     {ok, Pid :: pid()} |
     ignore |
     {error, Error :: term()}.
 
-start_link(PeerIp, PeerPort, Parent) ->
-    gen_statem:start_link(?MODULE, [PeerIp, PeerPort, Parent, 0], []).
+start_link(PeerIp, PeerPort, Parent, SeederOrLeecher) ->
+    gen_statem:start_link(?MODULE, [PeerIp, PeerPort, Parent, SeederOrLeecher, 0], []).
 
 
 %%  @doc
 %%  Starts the server.
 %%  @end
 -spec start_link(
-    PeerIp      :: inet:ip_address(),
-    PeerPort    :: inet:port_number(),
-    Parent      :: pid(),
-    LocalPort   :: inet:port_number()
+    PeerIp          :: inet:ip_address(),
+    PeerPort        :: inet:port_number(),
+    Parent          :: pid(),
+    SeederOrLeecher :: seeder | leecher,
+    LocalPort       :: inet:port_number()
 ) ->
     {ok, Pid :: pid()} |
     ignore |
     {error, Error :: term()}.
 
-start_link(PeerIp, PeerPort, Parent, LocalPort) ->
-    gen_statem:start_link(?MODULE, [PeerIp, PeerPort, Parent, LocalPort], []).
+start_link(PeerIp, PeerPort, Parent, SeederOrLeecher, LocalPort) ->
+    gen_statem:start_link(?MODULE, [PeerIp, PeerPort, Parent, SeederOrLeecher, LocalPort], []).
 
 
 %%  @doc
@@ -126,20 +130,25 @@ stop(Pid) ->
 %%
 %%
 %%
-init([PeerIp, PeerPort, Parent, LocalPort]) ->
+init([PeerIp, PeerPort, Parent, SeederOrLeecher, LocalPort]) ->
     SocketParams = [binary, {active, true}],
     {ok, Socket} = case gen_udp:open(LocalPort, SocketParams) of
         {ok, SockPort}      -> {ok, SockPort};
         {error, eaddrinuse} -> gen_udp:open(0, SocketParams)
     end,
     State = #state{
+        type         = SeederOrLeecher,
         parent       = Parent,
         ip           = PeerIp,
         port         = PeerPort,
         socket       = Socket,
-        conn_id_send = gen_bittorrent_helper:generate_random_binary(4)
+        conn_id_send = gen_bittorrent_helper:generate_random_binary(4),
+        seq_nr       = <<(gen_bittorrent_helper:generate_random_binary(2))/binary, 0, 0>>
     },
-    {ok, init, State, [{next_event, internal, start}]}.
+    case SeederOrLeecher of
+        seeder  -> {ok, wait, State};
+        leecher -> {ok, init, State, [{next_event, internal, connect}]}
+    end.
 
 
 %%
@@ -154,10 +163,15 @@ callback_mode() ->
 %%%===================================================================
 
 %--------------------------------------------------------------------
-%   Init state
+%   Wait state (for seeder)
 %
-handle_event(internal, start, init, SD) ->
+handle_event(info, {udp, _Port, _DstIp, _DstPort, _Message}, wait, SD) ->
+    {next_state, cs_connected, SD#state{}};
 
+%--------------------------------------------------------------------
+%   Init state (for leecher)
+%
+handle_event(internal, connect, init, SD) ->
     {next_state, cs_syn_sent, SD#state{}};
 
 %--------------------------------------------------------------------
@@ -184,14 +198,14 @@ handle_event({call, From}, get_port, _, #state{socket = Socket}) ->
 %%% Messages
 %%%===================================================================
 
-st_syn(#state{conn_id_send = ConnIdSend}) ->
+st_syn(#state{conn_id_send = ConnIdSend, seq_nr = SeqNr}) ->
     <<?ST_SYN/binary,
     ?VERSION/binary,
     ?EXTENSION/binary,
     ConnIdSend/binary,
     (gen_bittorrent_helper:get_timestamp_microseconds())/binary,
     0,0,0,0,0,0,0,0,
-    0,0,0,1,
+    SeqNr/binary,
     0,0,0,0>>.
 
 %%%===================================================================

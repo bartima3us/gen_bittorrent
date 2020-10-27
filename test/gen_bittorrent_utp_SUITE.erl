@@ -61,7 +61,7 @@ end_per_suite(_Config) ->
 %%
 test_basic(_Config) ->
     ok = meck:new(gen_bittorrent_utp, [passthrough]),
-    {ok, ServerPid} = gen_bittorrent_utp:start_link({127,0,0,1}, 7001, self(), 7002),
+    {ok, ServerPid} = gen_bittorrent_utp:start_link({127,0,0,1}, 7001, self(), leecher, 7002),
     % Stop test
     ok = gen_bittorrent:stop(ServerPid),
     true = meck:validate(gen_bittorrent_utp),
