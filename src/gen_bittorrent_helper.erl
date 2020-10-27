@@ -16,7 +16,8 @@
     int_to_bin32/1,
     get_packet/1,
     generate_random_binary/1,
-    get_timestamp_microseconds/0
+    get_timestamp_microseconds/0,
+    open_udp_socket/1
 ]).
 
 
@@ -111,3 +112,14 @@ generate_random_binary(Length) ->
 get_timestamp_microseconds() ->
     <<_:4/binary, TS/binary>> = <<(os:system_time()):64>>,
     TS.
+
+
+%%  @doc
+%%  Open UDP socket by a given port or random port if given one is already in use.
+%%  @end
+open_udp_socket(Port) ->
+    SocketParams = [binary, {active, true}],
+    case gen_udp:open(Port, SocketParams) of
+        {ok, SockPort}      -> {ok, SockPort};
+        {error, eaddrinuse} -> gen_udp:open(0, SocketParams)
+    end.

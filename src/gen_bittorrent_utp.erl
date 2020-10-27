@@ -15,6 +15,8 @@
 -export([
     start_link/4,
     start_link/5,
+    start/4,
+    start/5,
     get_local_port/1,
     stop/1
 ]).
@@ -65,7 +67,7 @@
 %%%===================================================================
 
 %%  @doc
-%%  Starts the server.
+%%  Starts the server with a link.
 %%  @end
 -spec start_link(
     PeerIp          :: inet:ip_address(),
@@ -82,7 +84,7 @@ start_link(PeerIp, PeerPort, Parent, SeederOrLeecher) ->
 
 
 %%  @doc
-%%  Starts the server.
+%%  Starts the server with a link.
 %%  @end
 -spec start_link(
     PeerIp          :: inet:ip_address(),
@@ -97,6 +99,41 @@ start_link(PeerIp, PeerPort, Parent, SeederOrLeecher) ->
 
 start_link(PeerIp, PeerPort, Parent, SeederOrLeecher, LocalPort) ->
     gen_statem:start_link(?MODULE, [PeerIp, PeerPort, Parent, SeederOrLeecher, LocalPort], []).
+
+
+%%  @doc
+%%  Starts the server without a link.
+%%  @end
+-spec start(
+    PeerIp          :: inet:ip_address(),
+    PeerPort        :: inet:port_number(),
+    Parent          :: pid(),
+    SeederOrLeecher :: seeder | leecher
+) ->
+    {ok, Pid :: pid()} |
+    ignore |
+    {error, Error :: term()}.
+
+start(PeerIp, PeerPort, Parent, SeederOrLeecher) ->
+    gen_statem:start(?MODULE, [PeerIp, PeerPort, Parent, SeederOrLeecher, 0], []).
+
+
+%%  @doc
+%%  Starts the server without a link.
+%%  @end
+-spec start(
+    PeerIp          :: inet:ip_address(),
+    PeerPort        :: inet:port_number(),
+    Parent          :: pid(),
+    SeederOrLeecher :: seeder | leecher,
+    LocalPort       :: inet:port_number()
+) ->
+    {ok, Pid :: pid()} |
+    ignore |
+    {error, Error :: term()}.
+
+start(PeerIp, PeerPort, Parent, SeederOrLeecher, LocalPort) ->
+    gen_statem:start(?MODULE, [PeerIp, PeerPort, Parent, SeederOrLeecher, LocalPort], []).
 
 
 %%  @doc
@@ -131,23 +168,20 @@ stop(Pid) ->
 %%
 %%
 init([PeerIp, PeerPort, Parent, SeederOrLeecher, LocalPort]) ->
-    SocketParams = [binary, {active, true}],
-    {ok, Socket} = case gen_udp:open(LocalPort, SocketParams) of
-        {ok, SockPort}      -> {ok, SockPort};
-        {error, eaddrinuse} -> gen_udp:open(0, SocketParams)
-    end,
     State = #state{
         type         = SeederOrLeecher,
         parent       = Parent,
         ip           = PeerIp,
         port         = PeerPort,
-        socket       = Socket,
         conn_id_send = gen_bittorrent_helper:generate_random_binary(4),
         seq_nr       = <<(gen_bittorrent_helper:generate_random_binary(2))/binary, 0, 0>>
     },
     case SeederOrLeecher of
-        seeder  -> {ok, wait, State};
-        leecher -> {ok, init, State, [{next_event, internal, connect}]}
+        seeder  ->
+            {ok, wait, State};
+        leecher ->
+            {ok, Socket} = gen_bittorrent_helper:open_udp_socket(LocalPort),
+            {ok, init, State#state{socket = Socket}, [{next_event, internal, connect}]}
     end.
 
 
