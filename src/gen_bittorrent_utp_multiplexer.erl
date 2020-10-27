@@ -2,7 +2,8 @@
 %%% @author bartimaeus
 %%% @copyright (C) 2020, sarunas.bartusevicius@gmail.com
 %%% @doc
-%%% uTP (https://www.bittorrent.org/beps/bep_0029.html) multiplexer.
+%%% uTP (https://www.bittorrent.org/beps/bep_0029.html) seeder multiplexer.
+%%% Multiplexer purpose is to forward received uTP data to appropriate FSM by connection id.
 %%% @end
 %%% Created : 27. Oct 2020 16.13
 %%%-------------------------------------------------------------------
@@ -68,8 +69,9 @@ start_link(LocalPort) ->
 init([LocalPort]) ->
     {ok, Socket} = gen_bittorrent_helper:open_udp_socket(LocalPort),
     State = #state{
-        socket     = Socket,
-        local_port = LocalPort
+        socket        = Socket,
+        local_port    = LocalPort,
+        conn_handlers = dict:new()
     },
     {ok, State}.
 
@@ -103,8 +105,23 @@ handle_cast(_Request, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(_Info, State) ->
-    {noreply, State}.
+handle_info(Message = {udp, _Port, DstIp, DstPort, Payload}, State = #state{conn_handlers = ConnHandlers}) ->
+    NewState = case erlang:byte_size(Payload) >= 40 of
+        true ->
+            <<_:16/binary, ConnId:16/binary, _/binary>> = Payload,
+            case dict:find(ConnId, ConnHandlers) of
+                {ok, {_, Pid}} ->
+                    Pid ! Message;
+                error ->
+                    % @TODO: change gen_bittorrent_utp to gen_bittorrent later
+                    {ok, Pid} = gen_bittorrent_utp:start(DstIp, DstPort, self(), seeder),
+                    MonitorRef = erlang:monitor(process, Pid),
+                    State#state{conn_handlers = dict:store(ConnId, {MonitorRef, Pid}, ConnHandlers)}
+            end;
+        false ->
+            State
+    end,
+    {noreply, NewState}.
 
 %%--------------------------------------------------------------------
 %% @private

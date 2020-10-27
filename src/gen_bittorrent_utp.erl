@@ -168,8 +168,10 @@ stop(Pid) ->
 %%
 %%
 init([PeerIp, PeerPort, Parent, SeederOrLeecher, LocalPort]) ->
+    {ok, Socket} = gen_bittorrent_helper:open_udp_socket(LocalPort),
     State = #state{
         type         = SeederOrLeecher,
+        socket       = Socket,
         parent       = Parent,
         ip           = PeerIp,
         port         = PeerPort,
@@ -180,8 +182,7 @@ init([PeerIp, PeerPort, Parent, SeederOrLeecher, LocalPort]) ->
         seeder  ->
             {ok, wait, State};
         leecher ->
-            {ok, Socket} = gen_bittorrent_helper:open_udp_socket(LocalPort),
-            {ok, init, State#state{socket = Socket}, [{next_event, internal, connect}]}
+            {ok, init, State, [{next_event, internal, connect}]}
     end.
 
 
