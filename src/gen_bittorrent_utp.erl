@@ -48,7 +48,7 @@
 
 -record(state, {
     active          = false     :: false | once,
-    type                        :: sender | receiver,
+    type                        :: seeder | leecher,
     parent                      :: pid(),   % Start of this process
     ip                          :: inet:ip_address(),
     port                        :: inet:port_number(),
@@ -169,18 +169,22 @@ stop(Pid) ->
 %%
 init([PeerIp, PeerPort, Parent, SeederOrLeecher, LocalPort]) ->
     {ok, Socket} = gen_bittorrent_helper:open_udp_socket(LocalPort),
+    RecvConnId = gen_bittorrent_helper:generate_random_binary(2),
+    RecvConnIdInt = gen_bittorrent_helper:bin16_to_int(RecvConnId) + 1,
+    SendConnId = gen_bittorrent_helper:int_to_bin16(RecvConnIdInt),
     State = #state{
         type         = SeederOrLeecher,
         socket       = Socket,
         parent       = Parent,
         ip           = PeerIp,
         port         = PeerPort,
-        conn_id_send = gen_bittorrent_helper:generate_random_binary(4),
-        seq_nr       = <<(gen_bittorrent_helper:generate_random_binary(2))/binary, 0, 0>>
+        conn_id_send = SendConnId,
+        conn_id_recv = RecvConnId,
+        seq_nr       = <<(gen_bittorrent_helper:generate_random_binary(1))/binary, 0>>
     },
     case SeederOrLeecher of
         seeder  ->
-            {ok, wait, State};
+            {ok, cs_syn_recv, State};
         leecher ->
             {ok, init, State, [{next_event, internal, connect}]}
     end.
@@ -198,9 +202,9 @@ callback_mode() ->
 %%%===================================================================
 
 %--------------------------------------------------------------------
-%   Wait state (for seeder)
+%   CS_SYN_RECV state (for seeder)
 %
-handle_event(info, {udp, _Port, _DstIp, _DstPort, _Message}, wait, SD) ->
+handle_event(info, {udp, _Port, _DstIp, _DstPort, _Message}, cs_syn_recv, SD) ->
     {next_state, cs_connected, SD#state{}};
 
 %--------------------------------------------------------------------
@@ -220,8 +224,29 @@ handle_event(internal, connect, init, SD) ->
 %--------------------------------------------------------------------
 %   CS_SYN_SENT state
 %
-handle_event(info, {udp, _Port, _DstIp, _DstPort, _Message}, cs_syn_sent, SD) ->
-    {next_state, cs_connected, SD#state{}};
+handle_event(info, {udp, _Port, _DstIp, _DstPort, Message}, cs_syn_sent, SD) ->
+    #state{
+        conn_id_recv = MyConnIdRecv,
+        seq_nr       = MySeqNr
+    } = SD,
+    State = ?ST_STATE,
+    Version = ?VERSION,
+    Extension = ?EXTENSION,
+    <<State:1/binary,
+    Version:2/binary,
+    Extension:1/binary,
+    ReceivedConnId:2/binary,
+    TsMS:4/binary,
+    TsDiffMS:4/binary,
+    WndSize:4/binary,
+    SeqNr:2/binary,
+    AckNr:2/binary>> = Message,
+    case MyConnIdRecv =:= ReceivedConnId andalso MySeqNr =:= AckNr of
+        true ->
+            {next_state, cs_connected, SD#state{wnd_size = WndSize}};
+        false ->
+            keep_state_and_data
+    end;
 
 %--------------------------------------------------------------------
 %   CS_CONNECTED state
@@ -250,6 +275,7 @@ st_syn(#state{conn_id_send = ConnIdSend, seq_nr = SeqNr}) ->
     0,0,0,0,0,0,0,0,
     SeqNr/binary,
     0,0,0,0>>.
+
 
 %%%===================================================================
 %%% Internal functions
@@ -300,6 +326,6 @@ socket_send(Socket, Ip, Port, Payload, Retries) ->
 %%  Increase sequence number.
 %%  @end
 increase_seq_nr(SD = #state{seq_nr = SeqNr}) ->
-    SeqNrInt = gen_bittorrent_helper:bin32_to_int(SeqNr) + 1,
-    NewSeqNr = gen_bittorrent_helper:int_to_bin32(SeqNrInt),
+    SeqNrInt = gen_bittorrent_helper:bin16_to_int(SeqNr) + 1,
+    NewSeqNr = gen_bittorrent_helper:int_to_bin16(SeqNrInt),
     SD#state{seq_nr = NewSeqNr}.

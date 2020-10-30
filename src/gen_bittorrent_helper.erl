@@ -14,6 +14,8 @@
     urlencode/1,
     bin32_to_int/1,
     int_to_bin32/1,
+    bin16_to_int/1,
+    int_to_bin16/1,
     get_packet/1,
     generate_random_binary/1,
     get_timestamp_microseconds/0,
@@ -86,6 +88,20 @@ bin32_to_int(Bin) when is_binary(Bin) ->
 %%
 int_to_bin32(Int) when is_integer(Int) ->
     <<Int:32>>.
+
+
+%%  @doc
+%%  Convert from 16 bits binary to integer
+%%  @end
+bin16_to_int(Bin) when is_binary(Bin) ->
+    <<Int:16>> = Bin,
+    Int.
+
+%% @doc
+%% Convert from integer to 16 bits binary
+%%
+int_to_bin16(Int) when is_integer(Int) ->
+    <<Int:16>>.
 
 
 %%  @doc
