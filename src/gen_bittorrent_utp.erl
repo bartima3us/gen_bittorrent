@@ -207,7 +207,15 @@ handle_event(info, {udp, _Port, _DstIp, _DstPort, _Message}, wait, SD) ->
 %   Init state (for leecher)
 %
 handle_event(internal, connect, init, SD) ->
-    {next_state, cs_syn_sent, SD#state{}};
+    #state{
+        socket = Socket,
+        ip     = Ip,
+        port   = Port
+    } = SD,
+    NewSD = increase_seq_nr(SD),
+    SynPayload = st_syn(NewSD),
+    ok = socket_send(Socket, Ip, Port, SynPayload),
+    {next_state, cs_syn_sent, NewSD#state{}};
 
 %--------------------------------------------------------------------
 %   CS_SYN_SENT state
@@ -247,3 +255,51 @@ st_syn(#state{conn_id_send = ConnIdSend, seq_nr = SeqNr}) ->
 %%% Internal functions
 %%%===================================================================
 
+
+%%  @private
+%%  @doc
+%%  Send packets via UDP socket.
+%%  @end
+-spec socket_send(
+    Socket  :: port(),
+    Ip      :: inet:ip_address(),
+    Port    :: inet:port_number(),
+    Payload :: binary()
+) -> ok.
+
+socket_send(Socket, Ip, Port, Payload) ->
+    socket_send(Socket, Ip, Port, Payload, 50).
+
+socket_send(Socket, Ip, Port, Payload, Retries) ->
+    case gen_udp:send(Socket, Ip, Port, Payload) of
+        ok ->
+            ok;
+        {error, einval} -> % Received IP or port can be malformed
+            ok;
+        {error, eagain} -> % System call failed
+            case Retries > 0 of
+                true ->
+                    timer:sleep(1000),
+                    socket_send(Socket, Ip, Port, Payload, Retries - 1);
+                false ->
+                    {error, eagain}
+            end;
+        {error, enetunreach} -> % Network is unreachable
+            case Retries > 0 of
+                true ->
+                    timer:sleep(5000),
+                    socket_send(Socket, Ip, Port, Payload, Retries - 1);
+                false ->
+                    {error, enetunreach}
+            end
+    end.
+
+
+%%  @private
+%%  @doc
+%%  Increase sequence number.
+%%  @end
+increase_seq_nr(SD = #state{seq_nr = SeqNr}) ->
+    SeqNrInt = gen_bittorrent_helper:bin32_to_int(SeqNr) + 1,
+    NewSeqNr = gen_bittorrent_helper:int_to_bin32(SeqNrInt),
+    SD#state{seq_nr = NewSeqNr}.
