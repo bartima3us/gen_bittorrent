@@ -58,7 +58,9 @@
     conn_id_send                :: binary(), % conn_id_recv + 1
     wnd_size                    :: binary(),
     seq_nr                      :: binary(),
-    last_ack_nr                 :: binary()
+    last_ack_nr                 :: binary(),
+    received_not_acked    = []  :: [binary()], % Reiceived sequence numbers to which I am still not acked
+    sent_not_acked        = []  :: [binary()]  % Sent sequence numbers to which peer is still not acked
 }).
 
 
@@ -210,25 +212,28 @@ handle_event(info, {udp, _Port, _DstIp, _DstPort, _Message}, cs_syn_recv, SD) ->
 %--------------------------------------------------------------------
 %   Init state (for leecher)
 %
-handle_event(internal, connect, init, SD) ->
+handle_event(internal, connect, init, SD0) ->
     #state{
-        socket = Socket,
-        ip     = Ip,
-        port   = Port
-    } = SD,
-    NewSD = increase_seq_nr(SD),
-    SynPayload = st_syn(NewSD),
+        socket          = Socket,
+        ip              = Ip,
+        port            = Port,
+        sent_not_acked  = CurrSentNotAcked
+    } = SD0,
+    SD1 = #state{seq_nr = NewSqNr} = increase_seq_nr(SD0),
+    SynPayload = st_syn(SD1),
     ok = socket_send(Socket, Ip, Port, SynPayload),
-    {next_state, cs_syn_sent, NewSD#state{}};
+    % @todo: stop after 60 s
+    {next_state, cs_syn_sent, SD1#state{sent_not_acked = [NewSqNr | CurrSentNotAcked]}};
 
 %--------------------------------------------------------------------
 %   CS_SYN_SENT state
 %
-handle_event(info, {udp, _Port, _DstIp, _DstPort, Message}, cs_syn_sent, SD) ->
+handle_event(info, {udp, _Port, _DstIp, _DstPort, Message}, cs_syn_sent, SD0) ->
     #state{
-        conn_id_recv = MyConnIdRecv,
-        seq_nr       = MySeqNr
-    } = SD,
+        conn_id_recv    = MyConnIdRecv,
+        seq_nr          = MySeqNr,
+        sent_not_acked  = CurrSentNotAcked
+    } = SD0,
     State = ?ST_STATE,
     Version = ?VERSION,
     Extension = ?EXTENSION,
@@ -241,9 +246,16 @@ handle_event(info, {udp, _Port, _DstIp, _DstPort, Message}, cs_syn_sent, SD) ->
     WndSize:4/binary,
     SeqNr:2/binary,
     AckNr:2/binary>> = Message,
-    case MyConnIdRecv =:= ReceivedConnId andalso MySeqNr =:= AckNr of
+    case MyConnIdRecv =:= ReceivedConnId
+        andalso MySeqNr =:= AckNr
+        andalso lists:member(SeqNr, CurrSentNotAcked)
+    of
         true ->
-            {next_state, cs_connected, SD#state{wnd_size = WndSize}};
+            SD1 = SD0#state{
+                wnd_size       = WndSize,
+                sent_not_acked = CurrSentNotAcked -- [SeqNr]
+            },
+            {next_state, cs_connected, SD1};
         false ->
             keep_state_and_data
     end;
