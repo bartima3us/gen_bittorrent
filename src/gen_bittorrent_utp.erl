@@ -230,9 +230,9 @@ handle_event(internal, connect, init, SD0) ->
 %
 handle_event(info, {udp, _Port, _DstIp, _DstPort, Message}, cs_syn_sent, SD0) ->
     #state{
-        conn_id_recv    = MyConnIdRecv,
-        seq_nr          = MySeqNr,
-        sent_not_acked  = CurrSentNotAcked
+        conn_id_recv        = MyConnIdRecv,
+        sent_not_acked      = CurrSentNotAcked,
+        received_not_acked  = CurrReceivedNotAcked
     } = SD0,
     State = ?ST_STATE,
     Version = ?VERSION,
@@ -246,14 +246,14 @@ handle_event(info, {udp, _Port, _DstIp, _DstPort, Message}, cs_syn_sent, SD0) ->
     WndSize:4/binary,
     SeqNr:2/binary,
     AckNr:2/binary>> = Message,
-    case MyConnIdRecv =:= ReceivedConnId
-        andalso MySeqNr =:= AckNr
-        andalso lists:member(SeqNr, CurrSentNotAcked)
+    case MyConnIdRecv =:= ReceivedConnId    % Connection ID must be the same
+        andalso lists:member(AckNr, CurrSentNotAcked)   % Must not be asked yet
     of
         true ->
             SD1 = SD0#state{
-                wnd_size       = WndSize,
-                sent_not_acked = CurrSentNotAcked -- [SeqNr]
+                wnd_size            = WndSize,
+                sent_not_acked      = CurrSentNotAcked -- [AckNr],
+                received_not_acked  = [SeqNr | CurrReceivedNotAcked]
             },
             {next_state, cs_connected, SD1};
         false ->
