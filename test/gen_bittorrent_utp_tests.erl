@@ -28,11 +28,12 @@
     payload         = <<>>      :: binary(),
     conn_id_recv                :: binary(), % rand()
     conn_id_send                :: binary(), % conn_id_recv + 1
-    wnd_size                    :: binary(),
     seq_nr                      :: binary(),
     last_ack_nr                 :: binary(),
     not_acked       = []        :: [binary()], % Sequence numbers to which are still not asked
-    peer_not_acked  = []        :: [binary()]  % Sequence numbers to which peer is still not asked
+    peer_not_acked  = []        :: [binary()], % Sequence numbers to which peer is still not asked
+    curr_wnd_size               :: binary(),
+    max_wnd_size                :: binary()
 }).
 
 

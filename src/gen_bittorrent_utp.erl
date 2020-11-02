@@ -56,11 +56,12 @@
     payload         = <<>>      :: binary(), % collected payload
     conn_id_recv                :: binary(), % rand()
     conn_id_send                :: binary(), % conn_id_recv + 1
-    wnd_size                    :: binary(),
     seq_nr                      :: binary(),
     last_ack_nr                 :: binary(),
-    received_not_acked    = []  :: [binary()], % Reiceived sequence numbers to which I am still not acked
-    sent_not_acked        = []  :: [binary()]  % Sent sequence numbers to which peer is still not acked
+    received_not_acked    = []  :: [binary()], % Received sequence numbers to which I am still not acked
+    sent_not_acked        = []  :: [binary()], % Sent sequence numbers to which peer is still not acked (in-flight)
+    curr_wnd_size               :: binary(),
+    max_wnd_size                :: binary()
 }).
 
 
@@ -228,30 +229,28 @@ handle_event(internal, connect, init, SD0) ->
 %--------------------------------------------------------------------
 %   CS_SYN_SENT state
 %
-handle_event(info, {udp, _Port, _DstIp, _DstPort, Message}, cs_syn_sent, SD0) ->
+handle_event(info, {udp, _Port, _DstIp, _DstPort, <<2, RestMessage/binary>>}, cs_syn_sent, SD0) ->
     #state{
         conn_id_recv        = MyConnIdRecv,
         sent_not_acked      = CurrSentNotAcked,
         received_not_acked  = CurrReceivedNotAcked
     } = SD0,
-    State = ?ST_STATE,
     Version = ?VERSION,
     Extension = ?EXTENSION,
-    <<State:1/binary,
-    Version:2/binary,
+    <<Version:2/binary,
     Extension:1/binary,
     ReceivedConnId:2/binary,
     TsMS:4/binary,
     TsDiffMS:4/binary,
     WndSize:4/binary,
     SeqNr:2/binary,
-    AckNr:2/binary>> = Message,
+    AckNr:2/binary>> = RestMessage,
     case MyConnIdRecv =:= ReceivedConnId    % Connection ID must be the same
         andalso lists:member(AckNr, CurrSentNotAcked)   % Must not be asked yet
     of
         true ->
             SD1 = SD0#state{
-                wnd_size            = WndSize,
+                max_wnd_size        = WndSize,
                 sent_not_acked      = CurrSentNotAcked -- [AckNr],
                 received_not_acked  = [SeqNr | CurrReceivedNotAcked]
             },
