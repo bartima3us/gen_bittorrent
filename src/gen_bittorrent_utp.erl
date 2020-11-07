@@ -268,6 +268,19 @@ handle_event(info, {udp, _Port, _DstIp, _DstPort, _Message}, cs_connected, _SD) 
 %--------------------------------------------------------------------
 %   Any state
 %
+handle_event(info, {udp, _Port, _DstIp, _DstPort, <<3, RestMessage/binary>>}, _, SD) ->
+    #state{conn_id_recv = MyConnIdRecv} = SD,
+    <<_Version:2/binary,
+    _Extension:1/binary,
+    ReceivedConnId:2/binary,
+    _Rest/binary>> = RestMessage,
+    case MyConnIdRecv =:= ReceivedConnId of
+        true ->
+            {next_state, terminated, SD};
+        false ->
+            keep_state_and_data
+    end;
+
 handle_event({call, From}, get_port, _, #state{socket = Socket}) ->
     {ok, LocalPort} = inet:port(Socket),
     {keep_state_and_data, [{reply, From, {ok, LocalPort}}]}.
