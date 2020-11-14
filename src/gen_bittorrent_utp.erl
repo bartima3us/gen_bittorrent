@@ -34,17 +34,15 @@
 ]).
 -endif.
 
--define(ST_DATA, <<0>>).
--define(ST_FIN, <<1>>).
--define(ST_STATE, <<2>>).
--define(ST_RESET, <<3>>).
--define(ST_SYN, <<4>>).
+-define(ST_DATA, <<16#01>>).
+-define(ST_FIN, <<16#11>>).
+-define(ST_STATE, <<16#21>>).
+-define(ST_RESET, <<16#31>>).
+-define(ST_SYN, <<16#41>>).
 
--define(EXTENSION, <<0,0>>).
+-define(EXTENSION, <<0>>).
 
--define(VERSION, <<1>>).
-
--define(DEFAULT_WND_SIZE, <<0,0,0,0,0,0,0,0>>).
+-define(DEFAULT_WND_SIZE, <<0,0,0,0>>).
 
 -record(state, {
     active          = false     :: false | once,
@@ -229,22 +227,20 @@ handle_event(internal, connect, init, SD0) ->
 %--------------------------------------------------------------------
 %   CS_SYN_SENT state
 %
-handle_event(info, {udp, _Port, _DstIp, _DstPort, <<2, RestMessage/binary>>}, cs_syn_sent, SD0) ->
+handle_event(info, {udp, _Port, _DstIp, _DstPort, <<16#21, RestMessage/binary>>}, cs_syn_sent, SD0) ->
     #state{
         conn_id_recv        = MyConnIdRecv,
         sent_not_acked      = CurrSentNotAcked,
         received_not_acked  = CurrReceivedNotAcked
     } = SD0,
-    Version = ?VERSION,
     Extension = ?EXTENSION,
-    <<Version:2/binary,
-    Extension:1/binary,
+    <<Extension:1/binary,
     ReceivedConnId:2/binary,
     TsMS:4/binary,
     TsDiffMS:4/binary,
     WndSize:4/binary,
     SeqNr:2/binary,
-    AckNr:2/binary>> = RestMessage,
+    AckNr:2/binary>> = RestMessage, % @todo: make not crash here
     case MyConnIdRecv =:= ReceivedConnId    % Connection ID must be the same
         andalso lists:member(AckNr, CurrSentNotAcked)   % Must not be asked yet
     of
@@ -268,10 +264,9 @@ handle_event(info, {udp, _Port, _DstIp, _DstPort, _Message}, cs_connected, _SD) 
 %--------------------------------------------------------------------
 %   Any state
 %
-handle_event(info, {udp, _Port, _DstIp, _DstPort, <<3, RestMessage/binary>>}, _, SD) ->
+handle_event(info, {udp, _Port, _DstIp, _DstPort, <<16#31, RestMessage/binary>>}, _, SD) ->
     #state{conn_id_recv = MyConnIdRecv} = SD,
-    <<_Version:2/binary,
-    _Extension:1/binary,
+    <<_Extension:1/binary,
     ReceivedConnId:2/binary,
     _Rest/binary>> = RestMessage,
     case MyConnIdRecv =:= ReceivedConnId of
@@ -292,13 +287,13 @@ handle_event({call, From}, get_port, _, #state{socket = Socket}) ->
 
 st_syn(#state{conn_id_send = ConnIdSend, seq_nr = SeqNr}) ->
     <<?ST_SYN/binary,
-    ?VERSION/binary,
     ?EXTENSION/binary,
     ConnIdSend/binary,
     (gen_bittorrent_helper:get_timestamp_microseconds())/binary,
-    0,0,0,0,0,0,0,0,
+    0,0,0,0,
+    ?DEFAULT_WND_SIZE/binary,
     SeqNr/binary,
-    0,0,0,0>>.
+    0,0>>.
 
 
 %%%===================================================================

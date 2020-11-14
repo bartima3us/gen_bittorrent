@@ -57,18 +57,18 @@ do_error_response_test_() ->
         [{"SYN packet.",
             fun() ->
                 State = #state{
-                    conn_id_send = <<0,0,0,1>>,
-                    seq_nr       = <<123,11,0,0>>
+                    conn_id_send = <<0,1>>,
+                    seq_nr       = <<2,0>>
                 },
                 ?assertEqual(
-                    <<4,
-                    1,
-                    0,0,
-                    0,0,0,1,
+                    <<16#41,
+                    0,
+                    0,1,
                     45,31,111,7,
-                    0,0,0,0,0,0,0,0,
-                    123,11,0,0,
-                    0,0,0,0>>,
+                    0,0,0,0,
+                    0,0,0,0,
+                    2,0,
+                    0,0>>,
                     gen_bittorrent_utp:st_syn(State)
                 )
             end
