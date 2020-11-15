@@ -228,30 +228,34 @@ handle_event(internal, connect, init, SD0) ->
 %   CS_SYN_SENT state
 %
 handle_event(info, {udp, _Port, _DstIp, _DstPort, <<16#21, RestMessage/binary>>}, cs_syn_sent, SD0) ->
+    % @todo make state timeout
     #state{
         conn_id_recv        = MyConnIdRecv,
         sent_not_acked      = CurrSentNotAcked,
         received_not_acked  = CurrReceivedNotAcked
     } = SD0,
-    Extension = ?EXTENSION,
-    <<Extension:1/binary,
-    ReceivedConnId:2/binary,
-    TsMS:4/binary,
-    TsDiffMS:4/binary,
-    WndSize:4/binary,
-    SeqNr:2/binary,
-    AckNr:2/binary>> = RestMessage, % @todo: make not crash here
-    case MyConnIdRecv =:= ReceivedConnId    % Connection ID must be the same
-        andalso lists:member(AckNr, CurrSentNotAcked)   % Must not be asked yet
-    of
-        true ->
-            SD1 = SD0#state{
-                max_wnd_size        = WndSize,
-                sent_not_acked      = CurrSentNotAcked -- [AckNr],
-                received_not_acked  = [SeqNr | CurrReceivedNotAcked]
-            },
-            {next_state, cs_connected, SD1};
-        false ->
+    case RestMessage of
+        <<_Extension:1/binary,
+        ReceivedConnId:2/binary,
+        TsMS:4/binary,
+        TsDiffMS:4/binary,
+        WndSize:4/binary,
+        SeqNr:2/binary,
+        AckNr:2/binary>> ->
+            case MyConnIdRecv =:= ReceivedConnId    % Connection ID must be the same
+                andalso lists:member(AckNr, CurrSentNotAcked)   % Must not be asked yet
+            of
+                true ->
+                    SD1 = SD0#state{
+                        max_wnd_size        = WndSize,
+                        sent_not_acked      = CurrSentNotAcked -- [AckNr],
+                        received_not_acked  = [SeqNr | CurrReceivedNotAcked]
+                    },
+                    {next_state, cs_connected, SD1};
+                false ->
+                    keep_state_and_data
+            end;
+        _ ->
             keep_state_and_data
     end;
 
