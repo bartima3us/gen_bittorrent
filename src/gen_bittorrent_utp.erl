@@ -221,14 +221,13 @@ handle_event(internal, connect, init, SD0) ->
     SD1 = #state{seq_nr = NewSqNr} = increase_seq_nr(SD0),
     SynPayload = st_syn(SD1),
     ok = socket_send(Socket, Ip, Port, SynPayload),
-    % @todo: stop after 60 s
-    {next_state, cs_syn_sent, SD1#state{sent_not_acked = [NewSqNr | CurrSentNotAcked]}};
+    SD2 = SD1#state{sent_not_acked = [NewSqNr | CurrSentNotAcked]},
+    {next_state, cs_syn_sent, SD2, [{state_timeout, 60000, stop}]};
 
 %--------------------------------------------------------------------
 %   CS_SYN_SENT state
 %
 handle_event(info, {udp, _Port, _DstIp, _DstPort, <<16#21, RestMessage/binary>>}, cs_syn_sent, SD0) ->
-    % @todo make state timeout
     #state{
         conn_id_recv        = MyConnIdRecv,
         sent_not_acked      = CurrSentNotAcked,
@@ -258,6 +257,9 @@ handle_event(info, {udp, _Port, _DstIp, _DstPort, <<16#21, RestMessage/binary>>}
         _ ->
             keep_state_and_data
     end;
+
+handle_event(state_timeout, stop, cs_syn_sent, _SD) ->
+    {stop, peer_not_responding};
 
 %--------------------------------------------------------------------
 %   CS_CONNECTED state
